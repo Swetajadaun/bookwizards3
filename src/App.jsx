@@ -322,8 +322,6 @@ export default function App() {
   const [members, setMembers] = useState([]);
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState({ msg: "", type: "success" });
   const [sideOpen, setSideOpen] = useState(true);
   const [shelfTab, setShelfTab] = useState("Reading");
   const [selMonth, setSelMonth] = useState(MONTHS[new Date().getMonth()]);
@@ -360,10 +358,6 @@ export default function App() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
-  function showToast(msg, type = "success") {
-    setToast({ msg, type });
-    setTimeout(() => setToast({ msg: "", type: "success" }), 3000);
-  }
 
   const myBooks = useMemo(() => books.filter(b => b.memberid === user?.id), [books, user]);
   const fin = myBooks.filter(b => b.status === "Finished");
