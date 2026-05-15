@@ -11,8 +11,8 @@ import { useState, useEffect, useMemo, useCallback } from "react";
    ═══════════════════════════════════════════════════════════════ */
 
 // ── PASTE YOUR SUPABASE CREDENTIALS HERE ──────────────────────
-const SUPABASE_URL = "YOUR_SUPABASE_URL";   // e.g. https://xxxx.supabase.co
-const SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY"; // long ey... key
+const SUPABASE_URL = "https://nnxbappmomgnxqjtwaya.supabase.co";   // e.g. https://xxxx.supabase.co
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ueGJhcHBtb21nbnhxanR3YXlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjAzNzIsImV4cCI6MjA5Mjc5NjM3Mn0.xK3hK3_CETJQ-qpvzu3K3eYNf3An7LfayXjN27S2czM"; // long ey... key
 
 // ── PASTE YOUR EMAILJS CREDENTIALS HERE ───────────────────────
 const EJS_SERVICE = "YOUR_EMAILJS_SERVICE_ID";
@@ -20,7 +20,7 @@ const EJS_TEMPLATE = "YOUR_EMAILJS_TEMPLATE_ID";
 const EJS_KEY = "YOUR_EMAILJS_PUBLIC_KEY";
 
 // ── PASTE YOUR BOOK WIZARDS LOGO URL HERE ─────────────────────
-const LOGO = "https://i.imgur.com/YOUR_LOGO.png"; // upload logo to imgur.com and paste link
+const LOGO = "/logo.png"; // upload logo to imgur.com and paste link
 
 /* ─── SUPABASE HELPERS ────────────────────────────────────────*/
 const SB = {
