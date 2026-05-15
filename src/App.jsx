@@ -11,8 +11,8 @@ import { useState, useEffect, useMemo, useCallback } from "react";
    ═══════════════════════════════════════════════════════════════ */
 
 // ── PASTE YOUR SUPABASE CREDENTIALS HERE ──────────────────────
-const SUPABASE_URL = "https://nnxbappmomgnxqjtwaya.supabase.co";   // e.g. https://xxxx.supabase.co
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ueGJhcHBtb21nbnhxanR3YXlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjAzNzIsImV4cCI6MjA5Mjc5NjM3Mn0.xK3hK3_CETJQ-qpvzu3K3eYNf3An7LfayXjN27S2czM"; // long ey... key
+const SUPABASE_URL = "YOUR_SUPABASE_URL";   // e.g. https://xxxx.supabase.co
+const SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY"; // long ey... key
 
 // ── PASTE YOUR EMAILJS CREDENTIALS HERE ───────────────────────
 const EJS_SERVICE = "YOUR_EMAILJS_SERVICE_ID";
@@ -20,7 +20,7 @@ const EJS_TEMPLATE = "YOUR_EMAILJS_TEMPLATE_ID";
 const EJS_KEY = "YOUR_EMAILJS_PUBLIC_KEY";
 
 // ── PASTE YOUR BOOK WIZARDS LOGO URL HERE ─────────────────────
-const LOGO = "/logo.png"; // upload logo to imgur.com and paste link
+const LOGO = "https://i.imgur.com/YOUR_LOGO.png"; // upload logo to imgur.com and paste link
 
 /* ─── SUPABASE HELPERS ────────────────────────────────────────*/
 const SB = {
@@ -148,28 +148,53 @@ const rand = arr => arr[Math.floor(Math.random() * arr.length)];
 
 /* ─── COMPONENTS ──────────────────────────────────────────────*/
 
-// Book cover with Google Books API
+// Cache to avoid re-fetching same book covers
+const coverCache = {};
+
+// Book cover - uses Open Library (no rate limit) + Google Books fallback
 function Cover({ title, author, size = 80, r = 8 }) {
   const [src, setSrc] = useState(null);
   const [done, setDone] = useState(false);
+  const key = `${title}||${author}`;
+
   useEffect(() => {
     if (!title) { setDone(true); return; }
-    fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(`${title} ${author || ""}`)}&maxResults=1`)
-      .then(x => x.json()).then(d => {
-        const img = d.items?.[0]?.volumeInfo?.imageLinks?.thumbnail;
-        if (img) setSrc(img.replace("http://", "https://"));
+    // Check cache first
+    if (coverCache[key] !== undefined) {
+      setSrc(coverCache[key] || null);
+      setDone(true);
+      return;
+    }
+    // Use Open Library API - no API key, no rate limits
+    const q = encodeURIComponent(title);
+    fetch(`https://openlibrary.org/search.json?title=${q}&limit=1&fields=cover_i,title`)
+      .then(x => x.json())
+      .then(d => {
+        const coverId = d.docs?.[0]?.cover_i;
+        if (coverId) {
+          const url = `https://covers.openlibrary.org/b/id/${coverId}-M.jpg`;
+          coverCache[key] = url;
+          setSrc(url);
+        } else {
+          coverCache[key] = "";
+        }
         setDone(true);
-      }).catch(() => setDone(true));
+      })
+      .catch(() => { coverCache[key] = ""; setDone(true); });
   }, [title, author]);
+
   const bg = ["#7B2D2D", "#1A472A", "#0E1A40", "#5C2D91", "#B8540A", "#1565C0"][(title?.charCodeAt(0) || 0) % 6];
   return (
-    <div style={{ width: size, height: size * 1.44, borderRadius: r, overflow: "hidden", flexShrink: 0, boxShadow: "2px 5px 16px rgba(0,0,0,0.55)", position: "relative" }}>
-      {!done && <div style={{ position: "absolute", inset: 0, background: bg, display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ fontSize: size * .18, opacity: .5 }}>✨</span></div>}
-      {src && done ? <img src={src} alt={title} style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={() => setSrc(null)} />
-        : done && <div style={{ width: "100%", height: "100%", background: `linear-gradient(155deg,${bg},${bg}99)`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
+    <div style={{ width: size, height: size * 1.44, borderRadius: r, overflow: "hidden", flexShrink: 0, boxShadow: "2px 5px 16px rgba(0,0,0,0.55)", position: "relative", background: bg }}>
+      {!done && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ fontSize: size * .18, opacity: .5, animation: "sh 1.5s infinite" }}>✨</span></div>}
+      {src && done && <img src={src} alt={title} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onError={() => { coverCache[key] = ""; setSrc(null); }} />}
+      {done && !src && (
+        <div style={{ width: "100%", height: "100%", background: `linear-gradient(155deg,${bg},${bg}99)`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
           <div style={{ fontWeight: 900, fontSize: size * .26, color: "rgba(255,255,255,.88)", fontFamily: "serif" }}>{ini(title)}</div>
           <div style={{ fontSize: size * .08, color: "rgba(255,255,255,.45)", textAlign: "center", padding: "0 6px", lineHeight: 1.2 }}>{(title || "").slice(0, 18)}</div>
-        </div>}
+          <div style={{ fontSize: size * .14, opacity: .3 }}>📚</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -337,6 +362,8 @@ export default function App() {
   const [newMemberName, setNewMemberName] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginErr, setLoginErr] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState({ msg: "", type: "success" });
 
   // registration
   const eReg = { name: "", email: "", phone: "", birthdayMonth: "January", birthdayDate: "", state: "", city: "", country: "India", postalAddress: "", instagramLink: "", goodreadsLink: "", bio: "", photo: "" };
@@ -359,6 +386,30 @@ export default function App() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // ── SESSION PERSISTENCE: restore login after page refresh ──
+  useEffect(() => {
+    const saved = localStorage.getItem("bw_user");
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        setUser(u);
+        setScreen("app");
+      } catch { }
+    }
+  }, []);
+
+  // Save user to localStorage whenever it changes
+  useEffect(() => {
+    if (user) localStorage.setItem("bw_user", JSON.stringify(user));
+    else localStorage.removeItem("bw_user");
+  }, [user]);
+
+  // ── TOAST NOTIFICATION ──
+  function showToast(msg, type = "success") {
+    setToast({ msg, type });
+    setTimeout(() => setToast({ msg: "", type: "success" }), 3000);
+  }
+
   const myBooks = useMemo(() => books.filter(b => b.memberid === user?.id), [books, user]);
   const fin = myBooks.filter(b => b.status === "Finished");
   const rdg = myBooks.filter(b => b.status === "Reading");
@@ -373,7 +424,9 @@ export default function App() {
     if (USE_SB) { await loadData(); }
     const found = members.find(m => (m.email || "").toLowerCase().trim() === loginEmail.toLowerCase().trim());
     if (!found) { setLoginErr("⚡ No wizard found. Please register!"); setLoading(false); return; }
-    setUser(found); setScreen("app"); setLoading(false);
+    setUser(found);
+    localStorage.setItem("bw_user", JSON.stringify(found));
+    setScreen("app"); setLoading(false);
   }
 
   /* ── REGISTER ── */
@@ -407,7 +460,9 @@ export default function App() {
 
   /* ── SAVE BOOK ── */
   async function saveBook() {
-    if (!bf.title) return;
+    if (!bf.title) { showToast("Please enter a book title!", "error"); return; }
+    if (saving) return; // prevent double click
+    setSaving(true);
     const tp = parseInt(bf.totalPages) || 0;
     const fp = parseInt(bf.finishedPages) || 0;
     const pct = tp > 0 ? Math.round((fp / tp) * 100) : 0;
@@ -429,7 +484,9 @@ export default function App() {
       if (editBook) setBooks(bs => bs.map(b => b.id === editBook.id ? bk : b));
       else setBooks(bs => [...bs, bk]);
     }
+    setSaving(false);
     setShowBookMod(false); setEditBook(null); setBf(eBook);
+    showToast(editBook ? "Book updated successfully! 📚" : "Book added to your shelf! ✨");
   }
 
   /* ── SAVE GOAL ── */
@@ -437,7 +494,10 @@ export default function App() {
     const updated = { ...user, yearlytarget: parseInt(goalVal) || 12 };
     if (USE_SB) { await SB.update("members", { yearlytarget: updated.yearlytarget }, user.id); await loadData(); }
     else setMembers(ms => ms.map(m => m.id === user.id ? updated : m));
-    setUser(updated); setShowGoal(false);
+    setUser(updated);
+    localStorage.setItem("bw_user", JSON.stringify(updated));
+    setShowGoal(false);
+    showToast("Reading goal updated! 🎯");
   }
 
   /* ── SAVE PROFILE ── */
@@ -445,7 +505,10 @@ export default function App() {
     const updated = { ...user, ...pe };
     if (USE_SB) { await SB.update("members", pe, user.id); await loadData(); }
     else setMembers(ms => ms.map(m => m.id === user.id ? updated : m));
-    setUser(updated); setShowProfEdit(false);
+    setUser(updated);
+    localStorage.setItem("bw_user", JSON.stringify(updated));
+    setShowProfEdit(false);
+    showToast("Profile saved successfully! ✨");
   }
 
   /* ── DELETE ── */
@@ -666,7 +729,7 @@ export default function App() {
               <div style={{ fontSize: 9, color: "#C9A84C" }}>{user.id} · tap to edit</div>
             </div>}
           </div>
-          {sideOpen && <button style={{ marginTop: 7, width: "100%", padding: "6px", background: "transparent", border: "1px solid var(--bdr)", borderRadius: 8, color: "var(--sub)", fontSize: 11, cursor: "pointer" }} onClick={() => { setUser(null); setScreen("login"); }}>Sign Out 🌀</button>}
+          {sideOpen && <button style={{ marginTop: 7, width: "100%", padding: "6px", background: "transparent", border: "1px solid var(--bdr)", borderRadius: 8, color: "var(--sub)", fontSize: 11, cursor: "pointer" }} onClick={() => { setUser(null); localStorage.removeItem("bw_user"); setScreen("login"); }}>Sign Out 🌀</button>}
         </div>
       </div>
 
@@ -1196,7 +1259,7 @@ export default function App() {
             </div>
             <div style={{ display: "flex", gap: 9, justifyContent: "flex-end", marginTop: 16 }}>
               <GB ch="Cancel" ghost onClick={() => { setShowBookMod(false); setEditBook(null); }} />
-              <GB ch={editBook ? "Save Changes ✨" : "Add to Shelf ⚡"} onClick={saveBook} />
+              <GB ch={saving ? "Saving... 🌀" : editBook ? "Save Changes ✨" : "Add to Shelf ⚡"} onClick={saveBook} style={{ opacity: saving ? .7 : 1, cursor: saving ? "not-allowed" : "pointer" }} />
             </div>
           </div>
         } onClose={() => { setShowBookMod(false); setEditBook(null); }} wide />
@@ -1209,6 +1272,13 @@ export default function App() {
           onYes={doDelete}
           onNo={() => setConfirmDel(null)}
         />
+      )}
+
+      {/* Toast notification */}
+      {toast.msg && (
+        <div style={{ position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)", background: toast.type === "success" ? "rgba(26,58,26,.97)" : "rgba(58,26,26,.97)", border: `1px solid ${toast.type === "success" ? "#6FAF7B" : "#E07070"}`, borderRadius: 12, padding: "12px 24px", zIndex: 9999, display: "flex", alignItems: "center", gap: 10, boxShadow: "0 8px 32px rgba(0,0,0,.6)", fontFamily: "'Cinzel',serif", fontSize: 13, color: toast.type === "success" ? "#6FAF7B" : "#E07070", whiteSpace: "nowrap", animation: "fiu .3s ease" }}>
+          <span>{toast.type === "success" ? "✅" : "❌"}</span>{toast.msg}
+        </div>
       )}
     </div>
   );
