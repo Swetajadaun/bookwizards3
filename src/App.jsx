@@ -11,16 +11,21 @@ import { useState, useEffect, useMemo, useCallback } from "react";
    ═══════════════════════════════════════════════════════════════ */
 
 // ── PASTE YOUR SUPABASE CREDENTIALS HERE ──────────────────────
+
 const SUPABASE_URL = "https://nnxbappmomgnxqjtwaya.supabase.co";   // e.g. https://xxxx.supabase.co
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ueGJhcHBtb21nbnhxanR3YXlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjAzNzIsImV4cCI6MjA5Mjc5NjM3Mn0.xK3hK3_CETJQ-qpvzu3K3eYNf3An7LfayXjN27S2czM"; // long ey... key
+
 
 // ── PASTE YOUR EMAILJS CREDENTIALS HERE ───────────────────────
 const EJS_SERVICE = "YOUR_EMAILJS_SERVICE_ID";
 const EJS_TEMPLATE = "YOUR_EMAILJS_TEMPLATE_ID";
 const EJS_KEY = "YOUR_EMAILJS_PUBLIC_KEY";
 
+
 // ── PASTE YOUR BOOK WIZARDS LOGO URL HERE ─────────────────────
 const LOGO = "/logo.png"; // upload logo to imgur.com and paste link
+
+
 
 /* ─── SUPABASE HELPERS ────────────────────────────────────────*/
 const SB = {
@@ -87,8 +92,8 @@ async function sendWelcomeEmail(m) {
 
 /* ─── CONSTANTS ───────────────────────────────────────────────*/
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const GENRES = ["Literary Fiction", "Historical Fiction", "Fantasy", "Science Fiction", "Thriller", "Mystery", "Non-Fiction", "Biography", "Memoir", "Self-Help", "Science", "Philosophy", "Poetry", "Romance", "Classic", "Children", "Graphic Novel", "Short Stories", "History", "Psychology"];
-const LANGS = ["English", "Hindi", "Bengali", "Tamil", "Telugu", "Marathi", "Kannada", "Malayalam", "Gujarati", "Punjabi", "Urdu", "French", "German", "Spanish", "Portuguese", "Japanese", "Korean", "Arabic", "Russian", "Sanskrit"];
+const GENRES = ["Fiction", "Fiction", "Fantasy", "Science Fiction", "Thriller", "Mystery", "Non-Fiction", "Biography", "Memoir", "Self-Help", "Science", "Philosophy", "Poetry", "Romance", "Classic", "Children", "Graphic Novel", "Short Stories", "History", "Psychology"];
+const LANGS = ["English", "Mandarin", "Hindi", "Bengali", "Tamil", "Telugu", "Marathi", "Kannada", "Malayalam", "Gujarati", "Punjabi", "Urdu", "French", "German", "Spanish", "Portuguese", "Japanese", "Korean", "Arabic", "Russian", "Sanskrit"];
 const COUNTRIES = ["India", "United States", "United Kingdom", "Canada", "Australia", "UAE", "Singapore", "Germany", "France", "Netherlands", "New Zealand", "Sweden", "South Africa", "Japan", "Brazil", "Other"];
 
 const STATE_CITIES = {
@@ -151,43 +156,59 @@ const rand = arr => arr[Math.floor(Math.random() * arr.length)];
 // Cache to avoid re-fetching same book covers
 const coverCache = {};
 
-// Book cover - uses Open Library (no rate limit) + Google Books fallback
+// Book cover - uses Open Library (no rate limit) with Google Books fallback
 function Cover({ title, author, size = 80, r = 8 }) {
   const [src, setSrc] = useState(null);
   const [done, setDone] = useState(false);
-  const key = `${title}||${author}`;
+  const cacheKey = (title || "").toLowerCase().trim();
 
   useEffect(() => {
     if (!title) { setDone(true); return; }
-    // Check cache first
-    if (coverCache[key] !== undefined) {
-      setSrc(coverCache[key] || null);
+    // Return cached result immediately
+    if (coverCache[cacheKey] !== undefined) {
+      setSrc(coverCache[cacheKey] || null);
       setDone(true);
       return;
     }
-    // Use Open Library API - no API key, no rate limits
+    setSrc(null); setDone(false);
+
+    // Try Open Library first - free, no rate limits
     const q = encodeURIComponent(title);
-    fetch(`https://openlibrary.org/search.json?title=${q}&limit=1&fields=cover_i,title`)
+    fetch(`https://openlibrary.org/search.json?title=${q}&limit=3&fields=cover_i`)
       .then(x => x.json())
       .then(d => {
-        const coverId = d.docs?.[0]?.cover_i;
-        if (coverId) {
-          const url = `https://covers.openlibrary.org/b/id/${coverId}-M.jpg`;
-          coverCache[key] = url;
+        // Find first result with a cover
+        const item = (d.docs || []).find(x => x.cover_i);
+        if (item?.cover_i) {
+          const url = `https://covers.openlibrary.org/b/id/${item.cover_i}-M.jpg`;
+          coverCache[cacheKey] = url;
           setSrc(url);
+          setDone(true);
         } else {
-          coverCache[key] = "";
+          // Fallback: try Google Books with delay to avoid rate limit
+          setTimeout(() => {
+            const gq = encodeURIComponent(`${title} ${author || ""}`);
+            fetch(`https://www.googleapis.com/books/v1/volumes?q=${gq}&maxResults=1`)
+              .then(x => x.json())
+              .then(d2 => {
+                const img = d2.items?.[0]?.volumeInfo?.imageLinks?.thumbnail;
+                const url = img ? img.replace("http://", "https://") : "";
+                coverCache[cacheKey] = url;
+                setSrc(url || null);
+                setDone(true);
+              })
+              .catch(() => { coverCache[cacheKey] = ""; setDone(true); });
+          }, Math.random() * 2000); // random delay to spread out requests
         }
-        setDone(true);
       })
-      .catch(() => { coverCache[key] = ""; setDone(true); });
-  }, [title, author]);
+      .catch(() => { coverCache[cacheKey] = ""; setDone(true); });
+  }, [cacheKey]);
 
   const bg = ["#7B2D2D", "#1A472A", "#0E1A40", "#5C2D91", "#B8540A", "#1565C0"][(title?.charCodeAt(0) || 0) % 6];
   return (
     <div style={{ width: size, height: size * 1.44, borderRadius: r, overflow: "hidden", flexShrink: 0, boxShadow: "2px 5px 16px rgba(0,0,0,0.55)", position: "relative", background: bg }}>
       {!done && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ fontSize: size * .18, opacity: .5, animation: "sh 1.5s infinite" }}>✨</span></div>}
-      {src && done && <img src={src} alt={title} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onError={() => { coverCache[key] = ""; setSrc(null); }} />}
+      {src && <img src={src} alt={title} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onError={() => { coverCache[cacheKey] = ""; setSrc(null); setDone(true); }} />}
       {done && !src && (
         <div style={{ width: "100%", height: "100%", background: `linear-gradient(155deg,${bg},${bg}99)`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
           <div style={{ fontWeight: 900, fontSize: size * .26, color: "rgba(255,255,255,.88)", fontFamily: "serif" }}>{ini(title)}</div>
@@ -340,10 +361,20 @@ function Splash({ onDone }) {
    MAIN APP
 ═══════════════════════════════════════════════════════════════ */
 export default function App() {
-  const [splash, setSplash] = useState(true);
-  const [screen, setScreen] = useState("login"); // login | register | app
+  const [splash, setSplash] = useState(() => {
+    // Don't show splash if user is already logged in
+    return !localStorage.getItem("bw_user");
+  });
+  const [screen, setScreen] = useState(() => {
+    return localStorage.getItem("bw_user") ? "app" : "login";
+  });
   const [page, setPage] = useState("dashboard");
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem("bw_user");
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
   const [members, setMembers] = useState([]);
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -386,19 +417,7 @@ export default function App() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // ── SESSION PERSISTENCE: restore login after page refresh ──
-  useEffect(() => {
-    const saved = localStorage.getItem("bw_user");
-    if (saved) {
-      try {
-        const u = JSON.parse(saved);
-        setUser(u);
-        setScreen("app");
-      } catch { }
-    }
-  }, []);
-
-  // Save user to localStorage whenever it changes
+  // Keep localStorage in sync when user changes
   useEffect(() => {
     if (user) localStorage.setItem("bw_user", JSON.stringify(user));
     else localStorage.removeItem("bw_user");
@@ -461,32 +480,40 @@ export default function App() {
   /* ── SAVE BOOK ── */
   async function saveBook() {
     if (!bf.title) { showToast("Please enter a book title!", "error"); return; }
-    if (saving) return; // prevent double click
+    if (saving) return;
     setSaving(true);
-    const tp = parseInt(bf.totalPages) || 0;
-    const fp = parseInt(bf.finishedPages) || 0;
-    const pct = tp > 0 ? Math.round((fp / tp) * 100) : 0;
-    const bk = {
-      id: editBook ? editBook.id : "b" + Date.now(),
-      memberid: user.id, membername: user.name,
-      title: bf.title, author: bf.author, genre: bf.genre,
-      origlang: bf.origLang, readlang: bf.readLang,
-      startdate: bf.startDate, startmonth: bf.startDate ? MONTHS[new Date(bf.startDate).getMonth()] : "",
-      enddate: bf.endDate, endmonth: bf.endDate ? MONTHS[new Date(bf.endDate).getMonth()] : "",
-      totalpages: tp, finishedpages: fp, pct,
-      status: bf.status, rating: bf.rating, review: bf.review
-    };
-    if (USE_SB) {
-      if (editBook) await SB.update("books", bk, bk.id);
-      else await SB.insert("books", bk);
-      await loadData();
-    } else {
-      if (editBook) setBooks(bs => bs.map(b => b.id === editBook.id ? bk : b));
-      else setBooks(bs => [...bs, bk]);
+    try {
+      const tp = parseInt(bf.totalPages) || 0;
+      const fp = parseInt(bf.finishedPages) || 0;
+      const pct = tp > 0 ? Math.round((fp / tp) * 100) : 0;
+      const bk = {
+        id: editBook ? editBook.id : "b" + Date.now(),
+        memberid: user.id, membername: user.name,
+        title: bf.title, author: bf.author, genre: bf.genre,
+        origlang: bf.origLang, readlang: bf.readLang,
+        startdate: bf.startDate, startmonth: bf.startDate ? MONTHS[new Date(bf.startDate).getMonth()] : "",
+        enddate: bf.endDate, endmonth: bf.endDate ? MONTHS[new Date(bf.endDate).getMonth()] : "",
+        totalpages: tp, finishedpages: fp, pct,
+        status: bf.status, rating: bf.rating, review: bf.review
+      };
+      if (USE_SB) {
+        if (editBook) await SB.update("books", bk, bk.id);
+        else await SB.insert("books", bk);
+        await loadData();
+      } else {
+        if (editBook) setBooks(bs => bs.map(b => b.id === editBook.id ? bk : b));
+        else setBooks(bs => [...bs, bk]);
+      }
+      const wasEdit = !!editBook;
+      setShowBookMod(false);
+      setEditBook(null);
+      setBf(eBook);
+      showToast(wasEdit ? "Book updated! 📚" : "Book added to your shelf! ✨");
+    } catch (e) {
+      showToast("Something went wrong. Please try again.", "error");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    setShowBookMod(false); setEditBook(null); setBf(eBook);
-    showToast(editBook ? "Book updated successfully! 📚" : "Book added to your shelf! ✨");
   }
 
   /* ── SAVE GOAL ── */
