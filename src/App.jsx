@@ -11,6 +11,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
    ═══════════════════════════════════════════════════════════════ */
 
 // ── PASTE YOUR SUPABASE CREDENTIALS HERE ──────────────────────
+
 const SUPABASE_URL = "https://nnxbappmomgnxqjtwaya.supabase.co";   // e.g. https://xxxx.supabase.co
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ueGJhcHBtb21nbnhxanR3YXlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjAzNzIsImV4cCI6MjA5Mjc5NjM3Mn0.xK3hK3_CETJQ-qpvzu3K3eYNf3An7LfayXjN27S2czM"; // long ey... key
 
@@ -90,8 +91,8 @@ async function sendWelcomeEmail(m) {
 
 /* ─── CONSTANTS ───────────────────────────────────────────────*/
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const GENRES = ["Fiction", "Fantasy", "Science Fiction", "Thriller", "Mystery", "Non-Fiction", "Biography", "Memoir", "Self-Help", "Science", "Philosophy", "Poetry", "Romance", "Classic", "Children", "Graphic Novel", "Short Stories", "History", "Psychology"];
-const LANGS = ["English", "Hindi", "Bengali", "Tamil", " Mandarin", "Telugu", "Marathi", "Kannada", "Malayalam", "Gujarati", "Punjabi", "Urdu", "French", "German", "Spanish", "Portuguese", "Japanese", "Korean", "Arabic", "Russian", "Sanskrit"];
+const GENRES = ["Literary Fiction", "Historical Fiction", "Fantasy", "Science Fiction", "Thriller", "Mystery", "Non-Fiction", "Biography", "Memoir", "Self-Help", "Science", "Philosophy", "Poetry", "Romance", "Classic", "Children", "Graphic Novel", "Short Stories", "History", "Psychology"];
+const LANGS = ["English", "Hindi", "Bengali", "Tamil", "Telugu", "Marathi", "Kannada", "Malayalam", "Gujarati", "Punjabi", "Urdu", "French", "German", "Spanish", "Portuguese", "Japanese", "Korean", "Arabic", "Russian", "Sanskrit"];
 const COUNTRIES = ["India", "United States", "United Kingdom", "Canada", "Australia", "UAE", "Singapore", "Germany", "France", "Netherlands", "New Zealand", "Sweden", "South Africa", "Japan", "Brazil", "Other"];
 
 const STATE_CITIES = {
@@ -283,29 +284,29 @@ function Donut({ slices, sz = 110 }) {
 }
 
 // Form helpers
-const IS = { width: "100%", padding: "10px 13px", background: "#FDFAF7", border: "1px solid rgba(139,90,43,.2)", borderRadius: 9, color: "#2C1810", fontSize: 13, marginBottom: 12, fontFamily: "inherit", outline: "none", transition: "border-color .2s" };
-const onF = e => { e.target.style.borderColor = "rgba(139,90,43,.6)"; e.target.style.background = "#FFF8F0"; };
-const onB = e => { e.target.style.borderColor = "rgba(139,90,43,.2)"; e.target.style.background = "#FDFAF7"; };
+const IS = { width: "100%", padding: "10px 13px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(201,168,76,.18)", borderRadius: 9, color: "#EDE8DF", fontSize: 13, marginBottom: 12, fontFamily: "inherit", outline: "none", transition: "border-color .2s" };
+const onF = e => e.target.style.borderColor = "rgba(201,168,76,.65)";
+const onB = e => e.target.style.borderColor = "rgba(201,168,76,.18)";
 function FI({ ...p }) { return <input {...p} style={{ ...IS, ...(p.style || {}) }} onFocus={onF} onBlur={onB} />; }
 function FS({ ch, ...p }) { return <select {...p} style={{ ...IS, ...(p.style || {}) }}>{ch}</select>; }
 function FT({ ...p }) { return <textarea {...p} style={{ ...IS, height: 76, resize: "vertical", ...(p.style || {}) }} onFocus={onF} onBlur={onB} />; }
-function FL({ ch }) { return <div style={{ fontSize: 10, fontWeight: 700, color: "#8B5A1A", textTransform: "uppercase", letterSpacing: ".09em", marginBottom: 4, fontFamily: "'Cinzel',serif" }}>{ch}</div>; }
+function FL({ ch }) { return <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(201,168,76,.65)", textTransform: "uppercase", letterSpacing: ".09em", marginBottom: 4, fontFamily: "'Cinzel',serif" }}>{ch}</div>; }
 function GB({ ch, onClick, ghost, full, sm, red, style: s = {} }) {
   const base = { padding: sm ? "6px 13px" : "10px 20px", borderRadius: 9, fontWeight: 700, fontSize: sm ? 11 : 13, border: "none", cursor: "pointer", transition: "all .18s", fontFamily: "'Cinzel',serif", letterSpacing: .4, ...s };
-  if (red) return <button onClick={onClick} style={{ ...base, background: "rgba(198,40,40,.08)", border: "1px solid rgba(198,40,40,.3)", color: "#C62828" }} onMouseEnter={e => e.currentTarget.style.background = "rgba(198,40,40,.15)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(198,40,40,.08)"}>{ch}</button>;
-  if (ghost) return <button onClick={onClick} style={{ ...base, background: "transparent", border: "1px solid rgba(139,90,43,.35)", color: "rgba(139,90,43,.8)" }}>{ch}</button>;
-  return <button onClick={onClick} style={{ ...base, background: "linear-gradient(135deg,#6B3A10,#8B5A1A,#6B3A10)", color: "#FFF8F0", width: full ? "100%" : "auto", boxShadow: "0 3px 16px rgba(139,90,43,.25)" }} onMouseEnter={e => e.currentTarget.style.transform = "translateY(-1px)"} onMouseLeave={e => e.currentTarget.style.transform = ""}>{ch}</button>;
+  if (red) return <button onClick={onClick} style={{ ...base, background: "rgba(180,40,40,.15)", border: "1px solid rgba(180,40,40,.4)", color: "#E07070" }} onMouseEnter={e => e.currentTarget.style.background = "rgba(180,40,40,.3)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(180,40,40,.15)"}>{ch}</button>;
+  if (ghost) return <button onClick={onClick} style={{ ...base, background: "transparent", border: "1px solid rgba(201,168,76,.35)", color: "rgba(201,168,76,.7)" }}>{ch}</button>;
+  return <button onClick={onClick} style={{ ...base, background: "linear-gradient(135deg,#A07820,#C9A84C,#A07820)", color: "#0B0806", width: full ? "100%" : "auto", boxShadow: "0 3px 16px rgba(201,168,76,.28)" }} onMouseEnter={e => e.currentTarget.style.transform = "translateY(-1px)"} onMouseLeave={e => e.currentTarget.style.transform = ""}>{ch}</button>;
 }
 
-function SH({ ch, action }) { return <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><h3 style={{ fontFamily: "'Cinzel',serif", fontSize: 15, color: "#8B5A1A", letterSpacing: .4 }}>{ch}</h3>{action}</div>; }
-function Nil({ icon, msg }) { return <div style={{ textAlign: "center", padding: "36px 16px", color: "rgba(44,24,16,.3)" }}><div style={{ fontSize: 36, marginBottom: 8 }}>{icon}</div><div style={{ fontSize: 12, fontFamily: "'Cinzel',serif" }}>{msg}</div></div>; }
+function SH({ ch, action }) { return <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><h3 style={{ fontFamily: "'Cinzel',serif", fontSize: 15, color: "#C9A84C", letterSpacing: .4 }}>{ch}</h3>{action}</div>; }
+function Nil({ icon, msg }) { return <div style={{ textAlign: "center", padding: "36px 16px", color: "rgba(255,255,255,.18)" }}><div style={{ fontSize: 36, marginBottom: 8 }}>{icon}</div><div style={{ fontSize: 12, fontFamily: "'Cinzel',serif" }}>{msg}</div></div>; }
 
 function Modal({ title, ch, onClose, wide = false }) {
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(44,24,16,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 600, backdropFilter: "blur(6px)" }} onClick={onClose}>
-      <div style={{ background: "#FFFDF9", border: "1px solid rgba(139,90,43,.2)", borderRadius: 18, padding: "28px 32px", width: wide ? 660 : 500, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(44,24,16,.2)", position: "relative" }} onClick={e => e.stopPropagation()}>
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg,transparent,#8B5A1A,transparent)", borderRadius: "18px 18px 0 0" }} />
-        <h2 style={{ fontFamily: "'Cinzel',serif", fontSize: 19, color: "#8B5A1A", marginBottom: 18, letterSpacing: .8 }}>{title}</h2>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.82)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 600, backdropFilter: "blur(8px)" }} onClick={onClose}>
+      <div style={{ background: "#0C0906", border: "1px solid rgba(201,168,76,.25)", borderRadius: 18, padding: "30px 34px", width: wide ? 660 : 500, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 0 70px rgba(201,168,76,.08)", position: "relative" }} onClick={e => e.stopPropagation()}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: "linear-gradient(90deg,transparent,#C9A84C,transparent)", borderRadius: "18px 18px 0 0" }} />
+        <h2 style={{ fontFamily: "'Cinzel',serif", fontSize: 19, color: "#C9A84C", marginBottom: 18, letterSpacing: .8 }}>{title}</h2>
         {ch}
       </div>
     </div>
@@ -315,10 +316,10 @@ function Modal({ title, ch, onClose, wide = false }) {
 // Confirm dialog
 function Confirm({ msg, onYes, onNo }) {
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(44,24,16,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 700, backdropFilter: "blur(8px)" }} onClick={onNo}>
-      <div style={{ background: "#FFFDF9", border: "1px solid rgba(198,40,40,.3)", borderRadius: 16, padding: 28, maxWidth: 360, textAlign: "center", boxShadow: "0 16px 48px rgba(44,24,16,.2)" }} onClick={e => e.stopPropagation()}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 700, backdropFilter: "blur(10px)" }} onClick={onNo}>
+      <div style={{ background: "#0C0906", border: "1px solid rgba(180,40,40,.4)", borderRadius: 16, padding: 28, maxWidth: 360, textAlign: "center", boxShadow: "0 0 50px rgba(180,40,40,.15)" }} onClick={e => e.stopPropagation()}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
-        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 14, color: "#2C1810", lineHeight: 1.7, marginBottom: 20 }}>{msg}</div>
+        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 14, color: "#EDE8DF", lineHeight: 1.7, marginBottom: 20 }}>{msg}</div>
         <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
           <GB ch="Cancel" ghost onClick={onNo} />
           <GB ch="Yes, Delete" red onClick={onYes} />
@@ -337,18 +338,18 @@ function Splash({ onDone }) {
     return () => ts.forEach(clearTimeout);
   }, []);
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#F7F0E6", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, overflow: "hidden" }}>
+    <div style={{ position: "fixed", inset: 0, background: "#050302", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, overflow: "hidden" }}>
       <Particles />
       <div style={{ textAlign: "center", position: "relative", zIndex: 1, padding: 32 }}>
         <div style={{ marginBottom: 14, transition: "opacity .6s", opacity: p >= 1 ? 1 : 0 }}>
-          <img src={LOGO} alt="BW" style={{ width: 88, height: 88, objectFit: "contain", borderRadius: 14, boxShadow: "0 8px 32px rgba(139,90,43,.2)" }} onError={e => { e.target.style.display = "none"; e.target.nextSibling.style.display = "block"; }} />
+          <img src={LOGO} alt="BW" style={{ width: 88, height: 88, objectFit: "contain", borderRadius: 14 }} onError={e => { e.target.style.display = "none"; e.target.nextSibling.style.display = "block"; }} />
           <div style={{ display: "none", fontSize: 68, animation: "pls 2s infinite" }}>🧙‍♂️</div>
         </div>
-        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 40, fontWeight: 900, letterSpacing: 4, transition: "all .8s", opacity: p >= 1 ? 1 : 0, transform: p >= 1 ? "none" : "translateY(18px)", background: "linear-gradient(135deg,#6B3A10,#8B5A1A,#C49A3C,#8B5A1A,#6B3A10)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", animation: p >= 2 ? "glw 2.2s infinite" : "none" }}>BOOK WIZARDS</div>
-        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: "rgba(139,90,43,.6)", letterSpacing: 6, marginTop: 5, transition: "opacity .8s", opacity: p >= 2 ? 1 : 0 }}>READING · MAGIC · COMMUNITY</div>
+        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 40, fontWeight: 900, letterSpacing: 4, transition: "all .8s", opacity: p >= 1 ? 1 : 0, transform: p >= 1 ? "none" : "translateY(18px)", background: "linear-gradient(135deg,#8B6914,#C9A84C,#F5E6A0,#C9A84C,#8B6914)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", animation: p >= 2 ? "glw 2.2s infinite" : "none" }}>BOOK WIZARDS</div>
+        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: "rgba(201,168,76,.55)", letterSpacing: 6, marginTop: 5, transition: "opacity .8s", opacity: p >= 2 ? 1 : 0 }}>READING · MAGIC · COMMUNITY</div>
         <div style={{ marginTop: 26, maxWidth: 360, transition: "opacity .8s", opacity: p >= 3 ? 1 : 0 }}>
-          <div style={{ color: "rgba(44,24,16,.6)", fontStyle: "italic", fontSize: 14, lineHeight: 1.9 }}>"{q.q}"</div>
-          <div style={{ color: "rgba(139,90,43,.55)", fontSize: 11, marginTop: 6, letterSpacing: 2 }}>— {q.a}</div>
+          <div style={{ color: "rgba(255,255,255,.55)", fontStyle: "italic", fontSize: 14, lineHeight: 1.9 }}>"{q.q}"</div>
+          <div style={{ color: "rgba(201,168,76,.45)", fontSize: 11, marginTop: 6, letterSpacing: 2 }}>— {q.a}</div>
         </div>
       </div>
     </div>
@@ -586,29 +587,11 @@ export default function App() {
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap');
     *{box-sizing:border-box;margin:0;padding:0;}
-    :root{
-      --bg:#F7F3EE;
-      --surf:#FFFFFF;
-      --card:#FFFFFF;
-      --card2:#FAF7F3;
-      --bdr:rgba(139,90,43,.12);
-      --bdr2:rgba(139,90,43,.25);
-      --gold:#8B5A1A;
-      --gold2:#B8740A;
-      --accent:#6B3FA0;
-      --text:#2C1810;
-      --sub:rgba(44,24,16,.55);
-      --mut:rgba(44,24,16,.32);
-      --green:#2E7D32;
-      --blue:#1565C0;
-      --red:#C62828;
-    }
+    :root{--bg:#060402;--surf:#0D0A06;--card:#130F09;--card2:#1A140D;--bdr:rgba(201,168,76,.14);--bdr2:rgba(201,168,76,.28);--gold:#C9A84C;--gold2:#E8D28A;--text:#EDE8DF;--sub:rgba(237,232,223,.48);--mut:rgba(237,232,223,.22);}
     body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--text);font-size:15px;}
-    ::-webkit-scrollbar{width:4px;height:4px;}
-    ::-webkit-scrollbar-track{background:#F0EBE3;}
-    ::-webkit-scrollbar-thumb{background:rgba(139,90,43,.3);border-radius:2px;}
+    ::-webkit-scrollbar{width:4px;height:4px;}::-webkit-scrollbar-track{background:var(--surf);}::-webkit-scrollbar-thumb{background:rgba(201,168,76,.28);border-radius:2px;}
     button,input,select,textarea{font-family:'Crimson Pro',Georgia,serif;outline:none;}
-    select option{background:#FFFFFF;color:#2C1810;}
+    select option{background:#0D0A06;}
     a{color:var(--gold);text-decoration:none;}a:hover{text-decoration:underline;}
   `;
   const card = { background: "var(--card)", border: "1px solid var(--bdr)", borderRadius: 14 };
