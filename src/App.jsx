@@ -1,66 +1,84 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 
 /* ═══════════════════════════════════════════════════════════════
-   📚 BOOK WIZARDS — v6 COMPLETE
-   All features included:
-   • Supabase backend
-   • Half star ratings (0.5)
-   • Custom book cover upload
-   • Book Reviews page
-   • Discussion Forum
-   • Daily Streak
-   • Book of the Month
-   • Reading Challenges & Badges
-   • Reading Timer
-   • Birthday Reminders
-   • Book Recommendations
-   • Annual Reading Wrapped
+   📚 BOOK WIZARDS — v6 COMPLETE (FIXED)
    ═══════════════════════════════════════════════════════════════ */
 
-const SUPABASE_URL = "https://nnxbappmomgnxqjtwaya.supabase.co";   // e.g. https://xxxx.supabase.co
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ueGJhcHBtb21nbnhxanR3YXlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjAzNzIsImV4cCI6MjA5Mjc5NjM3Mn0.xK3hK3_CETJQ-qpvzu3K3eYNf3An7LfayXjN27S2czM"; // long ey... key
+const SUPABASE_URL = "https://nnxbappmomgnxqjtwaya.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ueGJhcHBtb21nbnhxanR3YXlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjAzNzIsImV4cCI6MjA5Mjc5NjM3Mn0.xK3hK3_CETJQ-qpvzu3K3eYNf3An7LfayXjN27S2czM";
 
+// ── FIX: Define USE_SB so all conditional Supabase calls work ──
+const USE_SB = true;
 
 // ── PASTE YOUR EMAILJS CREDENTIALS HERE ───────────────────────
 const EJS_SERVICE = "YOUR_EMAILJS_SERVICE_ID";
 const EJS_TEMPLATE = "YOUR_EMAILJS_TEMPLATE_ID";
 const EJS_KEY = "YOUR_EMAILJS_PUBLIC_KEY";
 
-
 // ── PASTE YOUR BOOK WIZARDS LOGO URL HERE ─────────────────────
-const LOGO = "/logo.png"; // upload logo to imgur.com and paste link
-
-
+const LOGO = "/logo.png";
 
 /* ─── SUPABASE ───────────────────────────────────────────────*/
 const SB = {
   async select(table) {
     try {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } });
-      const d = await r.json(); return Array.isArray(d) ? d : [];
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+      });
+      const d = await r.json();
+      return Array.isArray(d) ? d : [];
     } catch { return []; }
   },
   async insert(table, row) {
     try {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, { method: "POST", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify(row) });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify(row)
+      });
       return await r.json();
     } catch { return null; }
   },
   async update(table, row, id) {
-    try { await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, { method: "PATCH", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify(row) }); } catch { }
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+        method: "PATCH",
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify(row)
+      });
+    } catch { }
   },
   async delete(table, id) {
-    try { await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, { method: "DELETE", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }); } catch { }
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+        method: "DELETE",
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+      });
+    } catch { }
   },
   async deleteWhere(table, col, val) {
-    try { await fetch(`${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${val}`, { method: "DELETE", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }); } catch { }
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${val}`, {
+        method: "DELETE",
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+      });
+    } catch { }
   }
 };
 
 /* ─── EMAIL ──────────────────────────────────────────────────*/
 async function sendWelcomeEmail(m) {
   if (EJS_SERVICE === "YOUR_EMAILJS_SERVICE_ID") return;
-  try { await fetch("https://api.emailjs.com/api/v1.0/email/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ service_id: EJS_SERVICE, template_id: EJS_TEMPLATE, user_id: EJS_KEY, template_params: { to_name: m.name, to_email: m.email, member_id: m.id, city: m.city, country: m.country } }) }); } catch { }
+  try {
+    await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        service_id: EJS_SERVICE, template_id: EJS_TEMPLATE, user_id: EJS_KEY,
+        template_params: { to_name: m.name, to_email: m.email, member_id: m.id, city: m.city, country: m.country }
+      })
+    });
+  } catch { }
 }
 
 /* ─── CONSTANTS ──────────────────────────────────────────────*/
@@ -68,9 +86,52 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 const GENRES = ["Fiction", "Fantasy", "Science Fiction", "Thriller", "Mythology", "Mystery", "Non-Fiction", "Biography", "Memoir", "Self-Help", "Science", "Philosophy", "Poetry", "Romance", "Classic", "Children", "Graphic Novel", "Short Stories", "History", "Psychology"];
 const LANGS = ["English", "Hindi", "Bengali", "Mandarin", "Tamil", "Telugu", "Marathi", "Kannada", "Malayalam", "Gujarati", "Punjabi", "Urdu", "French", "German", "Spanish", "Portuguese", "Japanese", "Korean", "Arabic", "Russian", "Sanskrit"];
 const COUNTRIES = ["India", "United States", "United Kingdom", "Canada", "Australia", "UAE", "Singapore", "Germany", "France", "Netherlands", "New Zealand", "Sweden", "South Africa", "Japan", "Brazil", "Other"];
-const STATE_CITIES = { "Andhra Pradesh": ["Visakhapatnam", "Vijayawada", "Guntur", "Nellore", "Kurnool", "Tirupati", "Kakinada", "Rajahmundry", "Kadapa", "Anantapur"], "Arunachal Pradesh": ["Itanagar", "Naharlagun", "Pasighat", "Tawang", "Ziro"], "Assam": ["Guwahati", "Silchar", "Dibrugarh", "Jorhat", "Nagaon", "Tinsukia", "Tezpur", "Karimganj"], "Bihar": ["Patna", "Gaya", "Bhagalpur", "Muzaffarpur", "Darbhanga", "Purnia", "Arrah", "Begusarai", "Katihar", "Chapra", "Samastipur", "Hajipur"], "Chhattisgarh": ["Raipur", "Bhilai", "Bilaspur", "Korba", "Durg", "Rajnandgaon", "Jagdalpur"], "Goa": ["Panaji", "Margao", "Vasco da Gama", "Mapusa", "Ponda"], "Gujarat": ["Ahmedabad", "Surat", "Vadodara", "Rajkot", "Bhavnagar", "Jamnagar", "Junagadh", "Gandhinagar", "Anand", "Nadiad", "Morbi", "Surendranagar", "Bharuch", "Navsari", "Valsad", "Porbandar"], "Haryana": ["Faridabad", "Gurgaon", "Panipat", "Ambala", "Yamunanagar", "Rohtak", "Hisar", "Karnal", "Sonipat", "Panchkula", "Bhiwani", "Sirsa", "Bahadurgarh", "Jind", "Kaithal", "Rewari"], "Himachal Pradesh": ["Shimla", "Mandi", "Solan", "Dharamshala", "Kullu", "Baddi", "Palampur", "Nahan", "Chamba", "Una", "Bilaspur", "Hamirpur"], "Jharkhand": ["Ranchi", "Jamshedpur", "Dhanbad", "Bokaro", "Deoghar", "Hazaribagh", "Giridih", "Chaibasa", "Daltonganj"], "Karnataka": ["Bangalore", "Mysore", "Hubli", "Dharwad", "Mangalore", "Belgaum", "Gulbarga", "Davangere", "Bellary", "Shimoga", "Tumkur", "Bijapur", "Raichur", "Bidar", "Udupi", "Hassan"], "Kerala": ["Thiruvananthapuram", "Kochi", "Kozhikode", "Kollam", "Thrissur", "Palakkad", "Malappuram", "Alappuzha", "Kannur", "Kasaragod", "Kottayam", "Wayanad"], "Madhya Pradesh": ["Bhopal", "Indore", "Jabalpur", "Gwalior", "Ujjain", "Sagar", "Dewas", "Satna", "Ratlam", "Rewa", "Singrauli", "Burhanpur", "Khandwa", "Bhind", "Chhindwara", "Guna", "Shivpuri", "Vidisha"], "Maharashtra": ["Mumbai", "Pune", "Nagpur", "Thane", "Nashik", "Aurangabad", "Solapur", "Kalyan", "Vasai-Virar", "Pimpri-Chinchwad", "Kolhapur", "Amravati", "Nanded", "Sangli", "Malegaon", "Jalgaon", "Akola", "Latur", "Dhule", "Ahmednagar", "Chandrapur", "Satara", "Ratnagiri", "Wardha", "Shirdi"], "Manipur": ["Imphal", "Thoubal", "Bishnupur", "Churachandpur", "Senapati"], "Meghalaya": ["Shillong", "Tura", "Jowai", "Nongstoin"], "Mizoram": ["Aizawl", "Lunglei", "Saiha", "Champhai"], "Nagaland": ["Kohima", "Dimapur", "Mokokchung", "Tuensang", "Wokha"], "Odisha": ["Bhubaneswar", "Cuttack", "Rourkela", "Brahmapur", "Sambalpur", "Puri", "Balasore", "Bhadrak", "Jharsuguda", "Angul", "Paradip"], "Punjab": ["Ludhiana", "Amritsar", "Jalandhar", "Patiala", "Bathinda", "Hoshiarpur", "Batala", "Pathankot", "Moga", "Abohar", "Phagwara", "Muktsar", "Firozpur", "Kapurthala"], "Rajasthan": ["Jaipur", "Jodhpur", "Kota", "Bikaner", "Ajmer", "Udaipur", "Bhilwara", "Alwar", "Bharatpur", "Sikar", "Pali", "Sri Ganganagar", "Tonk", "Beawar", "Churu", "Jhunjhunu"], "Sikkim": ["Gangtok", "Namchi", "Gyalshing", "Mangan"], "Tamil Nadu": ["Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem", "Tirunelveli", "Tiruppur", "Vellore", "Erode", "Thoothukudi", "Dindigul", "Thanjavur", "Sivakasi", "Nagercoil", "Kanchipuram", "Hosur"], "Telangana": ["Hyderabad", "Warangal", "Nizamabad", "Khammam", "Karimnagar", "Ramagundam", "Mahbubnagar", "Nalgonda", "Adilabad", "Suryapet", "Jagtial", "Mancherial", "Siddipet"], "Tripura": ["Agartala", "Dharmanagar", "Udaipur", "Kailasahar", "Belonia"], "Uttar Pradesh": ["Lucknow", "Kanpur", "Ghaziabad", "Agra", "Varanasi", "Meerut", "Prayagraj", "Bareilly", "Aligarh", "Moradabad", "Saharanpur", "Gorakhpur", "Noida", "Firozabad", "Jhansi", "Muzaffarnagar", "Mathura", "Rampur", "Shahjahanpur", "Mau", "Hapur", "Etawah", "Mirzapur", "Bulandshahr", "Hardoi", "Fatehpur", "Raebareli", "Sitapur", "Bahraich", "Unnao", "Lakhimpur", "Banda", "Pilibhit", "Barabanki", "Gonda", "Mainpuri", "Deoria", "Basti", "Ballia", "Greater Noida", "Vrindavan", "Ayodhya"], "Uttarakhand": ["Dehradun", "Haridwar", "Roorkee", "Haldwani", "Rudrapur", "Kashipur", "Rishikesh", "Kotdwar", "Ramnagar", "Mussoorie", "Nainital", "Almora", "Pithoragarh"], "West Bengal": ["Kolkata", "Howrah", "Durgapur", "Asansol", "Siliguri", "Bardhaman", "Barasat", "Bhatpara", "Kharagpur", "Jalpaiguri", "Haldia", "Krishnanagar"], "Delhi": ["New Delhi", "Dwarka", "Rohini", "Janakpuri", "Laxmi Nagar", "Shahdara", "Vasant Kunj", "Saket", "Pitampura", "Mayur Vihar", "Karol Bagh", "Connaught Place", "Nehru Place", "Preet Vihar", "Vikaspuri"], "Jammu & Kashmir": ["Srinagar", "Jammu", "Anantnag", "Sopore", "Baramulla", "Kathua", "Udhampur"], "Ladakh": ["Leh", "Kargil"], "Puducherry": ["Puducherry", "Karaikal", "Mahe", "Yanam"], "Chandigarh": ["Chandigarh"], "Andaman & Nicobar": ["Port Blair"] };
+const STATE_CITIES = {
+  "Andhra Pradesh": ["Visakhapatnam", "Vijayawada", "Guntur", "Nellore", "Kurnool", "Tirupati", "Kakinada", "Rajahmundry", "Kadapa", "Anantapur"],
+  "Arunachal Pradesh": ["Itanagar", "Naharlagun", "Pasighat", "Tawang", "Ziro"],
+  "Assam": ["Guwahati", "Silchar", "Dibrugarh", "Jorhat", "Nagaon", "Tinsukia", "Tezpur", "Karimganj"],
+  "Bihar": ["Patna", "Gaya", "Bhagalpur", "Muzaffarpur", "Darbhanga", "Purnia", "Arrah", "Begusarai", "Katihar", "Chapra", "Samastipur", "Hajipur"],
+  "Chhattisgarh": ["Raipur", "Bhilai", "Bilaspur", "Korba", "Durg", "Rajnandgaon", "Jagdalpur"],
+  "Goa": ["Panaji", "Margao", "Vasco da Gama", "Mapusa", "Ponda"],
+  "Gujarat": ["Ahmedabad", "Surat", "Vadodara", "Rajkot", "Bhavnagar", "Jamnagar", "Junagadh", "Gandhinagar", "Anand", "Nadiad", "Morbi", "Surendranagar", "Bharuch", "Navsari", "Valsad", "Porbandar"],
+  "Haryana": ["Faridabad", "Gurgaon", "Panipat", "Ambala", "Yamunanagar", "Rohtak", "Hisar", "Karnal", "Sonipat", "Panchkula", "Bhiwani", "Sirsa", "Bahadurgarh", "Jind", "Kaithal", "Rewari"],
+  "Himachal Pradesh": ["Shimla", "Mandi", "Solan", "Dharamshala", "Kullu", "Baddi", "Palampur", "Nahan", "Chamba", "Una", "Bilaspur", "Hamirpur"],
+  "Jharkhand": ["Ranchi", "Jamshedpur", "Dhanbad", "Bokaro", "Deoghar", "Hazaribagh", "Giridih", "Chaibasa", "Daltonganj"],
+  "Karnataka": ["Bangalore", "Mysore", "Hubli", "Dharwad", "Mangalore", "Belgaum", "Gulbarga", "Davangere", "Bellary", "Shimoga", "Tumkur", "Bijapur", "Raichur", "Bidar", "Udupi", "Hassan"],
+  "Kerala": ["Thiruvananthapuram", "Kochi", "Kozhikode", "Kollam", "Thrissur", "Palakkad", "Malappuram", "Alappuzha", "Kannur", "Kasaragod", "Kottayam", "Wayanad"],
+  "Madhya Pradesh": ["Bhopal", "Indore", "Jabalpur", "Gwalior", "Ujjain", "Sagar", "Dewas", "Satna", "Ratlam", "Rewa", "Singrauli", "Burhanpur", "Khandwa", "Bhind", "Chhindwara", "Guna", "Shivpuri", "Vidisha"],
+  "Maharashtra": ["Mumbai", "Pune", "Nagpur", "Thane", "Nashik", "Aurangabad", "Solapur", "Kalyan", "Vasai-Virar", "Pimpri-Chinchwad", "Kolhapur", "Amravati", "Nanded", "Sangli", "Malegaon", "Jalgaon", "Akola", "Latur", "Dhule", "Ahmednagar", "Chandrapur", "Satara", "Ratnagiri", "Wardha", "Shirdi"],
+  "Manipur": ["Imphal", "Thoubal", "Bishnupur", "Churachandpur", "Senapati"],
+  "Meghalaya": ["Shillong", "Tura", "Jowai", "Nongstoin"],
+  "Mizoram": ["Aizawl", "Lunglei", "Saiha", "Champhai"],
+  "Nagaland": ["Kohima", "Dimapur", "Mokokchung", "Tuensang", "Wokha"],
+  "Odisha": ["Bhubaneswar", "Cuttack", "Rourkela", "Brahmapur", "Sambalpur", "Puri", "Balasore", "Bhadrak", "Jharsuguda", "Angul", "Paradip"],
+  "Punjab": ["Ludhiana", "Amritsar", "Jalandhar", "Patiala", "Bathinda", "Hoshiarpur", "Batala", "Pathankot", "Moga", "Abohar", "Phagwara", "Muktsar", "Firozpur", "Kapurthala"],
+  "Rajasthan": ["Jaipur", "Jodhpur", "Kota", "Bikaner", "Ajmer", "Udaipur", "Bhilwara", "Alwar", "Bharatpur", "Sikar", "Pali", "Sri Ganganagar", "Tonk", "Beawar", "Churu", "Jhunjhunu"],
+  "Sikkim": ["Gangtok", "Namchi", "Gyalshing", "Mangan"],
+  "Tamil Nadu": ["Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem", "Tirunelveli", "Tiruppur", "Vellore", "Erode", "Thoothukudi", "Dindigul", "Thanjavur", "Sivakasi", "Nagercoil", "Kanchipuram", "Hosur"],
+  "Telangana": ["Hyderabad", "Warangal", "Nizamabad", "Khammam", "Karimnagar", "Ramagundam", "Mahbubnagar", "Nalgonda", "Adilabad", "Suryapet", "Jagtial", "Mancherial", "Siddipet"],
+  "Tripura": ["Agartala", "Dharmanagar", "Udaipur", "Kailasahar", "Belonia"],
+  "Uttar Pradesh": ["Lucknow", "Kanpur", "Ghaziabad", "Agra", "Varanasi", "Meerut", "Prayagraj", "Bareilly", "Aligarh", "Moradabad", "Saharanpur", "Gorakhpur", "Noida", "Firozabad", "Jhansi", "Muzaffarnagar", "Mathura", "Rampur", "Shahjahanpur", "Mau", "Hapur", "Etawah", "Mirzapur", "Bulandshahr", "Hardoi", "Fatehpur", "Raebareli", "Sitapur", "Bahraich", "Unnao", "Lakhimpur", "Banda", "Pilibhit", "Barabanki", "Gonda", "Mainpuri", "Deoria", "Basti", "Ballia", "Greater Noida", "Vrindavan", "Ayodhya"],
+  "Uttarakhand": ["Dehradun", "Haridwar", "Roorkee", "Haldwani", "Rudrapur", "Kashipur", "Rishikesh", "Kotdwar", "Ramnagar", "Mussoorie", "Nainital", "Almora", "Pithoragarh"],
+  "West Bengal": ["Kolkata", "Howrah", "Durgapur", "Asansol", "Siliguri", "Bardhaman", "Barasat", "Bhatpara", "Kharagpur", "Jalpaiguri", "Haldia", "Krishnanagar"],
+  "Delhi": ["New Delhi", "Dwarka", "Rohini", "Janakpuri", "Laxmi Nagar", "Shahdara", "Vasant Kunj", "Saket", "Pitampura", "Mayur Vihar", "Karol Bagh", "Connaught Place", "Nehru Place", "Preet Vihar", "Vikaspuri"],
+  "Jammu & Kashmir": ["Srinagar", "Jammu", "Anantnag", "Sopore", "Baramulla", "Kathua", "Udhampur"],
+  "Ladakh": ["Leh", "Kargil"],
+  "Puducherry": ["Puducherry", "Karaikal", "Mahe", "Yanam"],
+  "Chandigarh": ["Chandigarh"],
+  "Andaman & Nicobar": ["Port Blair"]
+};
 const STATES = Object.keys(STATE_CITIES).sort();
-const QUOTES = [{ q: "Words are our most inexhaustible source of magic.", a: "Albus Dumbledore" }, { q: "It is our choices that show what we truly are.", a: "Albus Dumbledore" }, { q: "A reader lives a thousand lives before he dies.", a: "George R.R. Martin" }, { q: "There is no friend as loyal as a book.", a: "Ernest Hemingway" }, { q: "Reading is dreaming with open eyes.", a: "Unknown" }, { q: "Not all those who wander are lost.", a: "J.R.R. Tolkien" }, { q: "So many books, so little time.", a: "Frank Zappa" }];
+const QUOTES = [
+  { q: "Words are our most inexhaustible source of magic.", a: "Albus Dumbledore" },
+  { q: "It is our choices that show what we truly are.", a: "Albus Dumbledore" },
+  { q: "A reader lives a thousand lives before he dies.", a: "George R.R. Martin" },
+  { q: "There is no friend as loyal as a book.", a: "Ernest Hemingway" },
+  { q: "Reading is dreaming with open eyes.", a: "Unknown" },
+  { q: "Not all those who wander are lost.", a: "J.R.R. Tolkien" },
+  { q: "So many books, so little time.", a: "Frank Zappa" }
+];
 
 const CHALLENGES = [
   { id: "c1", title: "Read an Indian Author", desc: "Read any book written by an Indian author", emoji: "🇮🇳", points: 50 },
@@ -97,6 +158,7 @@ function Cover({ title, author, customCover, size = 80, r = 8 }) {
   const [src, setSrc] = useState(customCover || null);
   const [done, setDone] = useState(!!customCover);
   const ck = (title || "").toLowerCase().trim();
+
   useEffect(() => {
     if (customCover) { setSrc(customCover); setDone(true); return; }
     if (!title) { setDone(true); return; }
@@ -105,21 +167,34 @@ function Cover({ title, author, customCover, size = 80, r = 8 }) {
     fetch(`https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&limit=3&fields=cover_i`)
       .then(x => x.json()).then(d => {
         const item = (d.docs || []).find(x => x.cover_i);
-        if (item?.cover_i) { const url = `https://covers.openlibrary.org/b/id/${item.cover_i}-M.jpg`; coverCache[ck] = url; setSrc(url); setDone(true); }
-        else {
+        if (item?.cover_i) {
+          const url = `https://covers.openlibrary.org/b/id/${item.cover_i}-M.jpg`;
+          coverCache[ck] = url; setSrc(url); setDone(true);
+        } else {
           setTimeout(() => {
             fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(`${title} ${author || ""}`)}&maxResults=1`)
-              .then(x => x.json()).then(d2 => { const img = d2.items?.[0]?.volumeInfo?.imageLinks?.thumbnail; const url = img ? img.replace("http://", "https://") : ""; coverCache[ck] = url; setSrc(url || null); setDone(true); }).catch(() => { coverCache[ck] = ""; setDone(true); });
+              .then(x => x.json()).then(d2 => {
+                const img = d2.items?.[0]?.volumeInfo?.imageLinks?.thumbnail;
+                const url = img ? img.replace("http://", "https://") : "";
+                coverCache[ck] = url; setSrc(url || null); setDone(true);
+              }).catch(() => { coverCache[ck] = ""; setDone(true); });
           }, Math.random() * 2000);
         }
       }).catch(() => { coverCache[ck] = ""; setDone(true); });
-  }, [title, author, customCover]);
+  }, [title, author, customCover, ck]);
+
   const bg = ["#7B2D2D", "#1A472A", "#0E1A40", "#5C2D91", "#B8540A", "#1565C0"][(title?.charCodeAt(0) || 0) % 6];
   return (
     <div style={{ width: size, height: size * 1.44, borderRadius: r, overflow: "hidden", flexShrink: 0, boxShadow: "2px 5px 16px rgba(0,0,0,0.55)", position: "relative", background: bg }}>
       {!done && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ fontSize: size * .18, opacity: .5, animation: "sh 1.5s infinite" }}>✨</span></div>}
       {src && <img src={src} alt={title} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onError={() => { coverCache[ck] = ""; setSrc(null); setDone(true); }} />}
-      {done && !src && <div style={{ width: "100%", height: "100%", background: `linear-gradient(155deg,${bg},${bg}99)`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}><div style={{ fontWeight: 900, fontSize: size * .26, color: "rgba(255,255,255,.88)", fontFamily: "serif" }}>{ini(title)}</div><div style={{ fontSize: size * .08, color: "rgba(255,255,255,.45)", textAlign: "center", padding: "0 6px", lineHeight: 1.2 }}>{(title || "").slice(0, 18)}</div><div style={{ fontSize: size * .14, opacity: .3 }}>📚</div></div>}
+      {done && !src && (
+        <div style={{ width: "100%", height: "100%", background: `linear-gradient(155deg,${bg},${bg}99)`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
+          <div style={{ fontWeight: 900, fontSize: size * .26, color: "rgba(255,255,255,.88)", fontFamily: "serif" }}>{ini(title)}</div>
+          <div style={{ fontSize: size * .08, color: "rgba(255,255,255,.45)", textAlign: "center", padding: "0 6px", lineHeight: 1.2 }}>{(title || "").slice(0, 18)}</div>
+          <div style={{ fontSize: size * .14, opacity: .3 }}>📚</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -148,7 +223,9 @@ function Particles() {
 }
 
 /* ─── UI COMPONENTS ──────────────────────────────────────────*/
-function PBar({ p = 0, c = "#C9A84C", h = 7 }) { return <div style={{ height: h, background: "rgba(255,255,255,.07)", borderRadius: h, overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.min(100, Math.max(0, p))}%`, background: c, borderRadius: h, transition: "width .7s ease" }} /></div>; }
+function PBar({ p = 0, c = "#C9A84C", h = 7 }) {
+  return <div style={{ height: h, background: "rgba(255,255,255,.07)", borderRadius: h, overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.min(100, Math.max(0, p))}%`, background: c, borderRadius: h, transition: "width .7s ease" }} /></div>;
+}
 
 function Stars({ v = 0, onChange, sz = 15 }) {
   const [hov, setHov] = useState(0);
@@ -185,22 +262,44 @@ function LineChart({ data, c = "#C9A84C", h = 100 }) {
     <svg width="100%" height={h} style={{ overflow: "visible" }}>
       <defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={c} stopOpacity={.35} /><stop offset="100%" stopColor={c} stopOpacity={0} /></linearGradient></defs>
       <path d={area} fill="url(#cg)" /><path d={path} fill="none" stroke={c} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
-      {pts.map(([x, y], i) => <g key={i}><circle cx={`${x}%`} cy={y} r={3.5} fill={c} stroke="rgba(0,0,0,.4)" strokeWidth={1.5} />{data[i].v > 0 && <text x={`${x}%`} y={y - 7} textAnchor="middle" fontSize={8} fill={c} fontWeight="bold">{data[i].v}</text>}<text x={`${x}%`} y={h + 2} textAnchor="middle" fontSize={8} fill="rgba(255,255,255,.35)">{data[i].l}</text></g>)}
+      {pts.map(([x, y], i) => (
+        <g key={i}>
+          <circle cx={`${x}%`} cy={y} r={3.5} fill={c} stroke="rgba(0,0,0,.4)" strokeWidth={1.5} />
+          {data[i].v > 0 && <text x={`${x}%`} y={y - 7} textAnchor="middle" fontSize={8} fill={c} fontWeight="bold">{data[i].v}</text>}
+          <text x={`${x}%`} y={h + 2} textAnchor="middle" fontSize={8} fill="rgba(255,255,255,.35)">{data[i].l}</text>
+        </g>
+      ))}
     </svg>
   );
 }
 
 function Donut({ slices, sz = 110 }) {
-  const tot = slices.reduce((a, s) => a + s.v, 0) || 1; let cum = 0; const r = 42, cx = 55, cy = 55, sw = 14;
-  return <svg width={sz} height={sz} viewBox="0 0 110 110">{slices.map((s, i) => { const sa = cum / tot * 2 * Math.PI - Math.PI / 2; cum += s.v; const ea = cum / tot * 2 * Math.PI - Math.PI / 2; const x1 = cx + r * Math.cos(sa), y1 = cy + r * Math.sin(sa), x2 = cx + r * Math.cos(ea), y2 = cy + r * Math.sin(ea), lg = s.v / tot > .5 ? 1 : 0; return <path key={i} d={`M${x1} ${y1} A${r} ${r} 0 ${lg} 1 ${x2} ${y2}`} fill="none" stroke={s.c} strokeWidth={sw} strokeLinecap="round" opacity={.85} /> })}<text x={55} y={51} textAnchor="middle" fontSize={16} fontWeight="bold" fill="#C9A84C">{tot}</text><text x={55} y={64} textAnchor="middle" fontSize={8} fill="rgba(255,255,255,.35)">books</text></svg>;
+  const tot = slices.reduce((a, s) => a + s.v, 0) || 1;
+  let cum = 0;
+  const r = 42, cx = 55, cy = 55, sw = 14;
+  return (
+    <svg width={sz} height={sz} viewBox="0 0 110 110">
+      {slices.map((s, i) => {
+        const sa = cum / tot * 2 * Math.PI - Math.PI / 2;
+        cum += s.v;
+        const ea = cum / tot * 2 * Math.PI - Math.PI / 2;
+        const x1 = cx + r * Math.cos(sa), y1 = cy + r * Math.sin(sa);
+        const x2 = cx + r * Math.cos(ea), y2 = cy + r * Math.sin(ea);
+        const lg = s.v / tot > .5 ? 1 : 0;
+        return <path key={i} d={`M${x1} ${y1} A${r} ${r} 0 ${lg} 1 ${x2} ${y2}`} fill="none" stroke={s.c} strokeWidth={sw} strokeLinecap="round" opacity={.85} />;
+      })}
+      <text x={55} y={51} textAnchor="middle" fontSize={16} fontWeight="bold" fill="#C9A84C">{tot}</text>
+      <text x={55} y={64} textAnchor="middle" fontSize={8} fill="rgba(255,255,255,.35)">books</text>
+    </svg>
+  );
 }
 
 const IS = { width: "100%", padding: "10px 13px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(201,168,76,.18)", borderRadius: 9, color: "#EDE8DF", fontSize: 13, marginBottom: 12, fontFamily: "inherit", outline: "none", transition: "border-color .2s" };
 const onF = e => e.target.style.borderColor = "rgba(201,168,76,.65)";
 const onB = e => e.target.style.borderColor = "rgba(201,168,76,.18)";
-function FI({ ...p }) { return <input {...p} style={{ ...IS, ...(p.style || {}) }} onFocus={onF} onBlur={onB} />; }
-function FS({ ch, ...p }) { return <select {...p} style={{ ...IS, ...(p.style || {}) }}>{ch}</select>; }
-function FT({ ...p }) { return <textarea {...p} style={{ ...IS, height: 76, resize: "vertical", ...(p.style || {}) }} onFocus={onF} onBlur={onB} />; }
+function FI(props) { return <input {...props} style={{ ...IS, ...(props.style || {}) }} onFocus={onF} onBlur={onB} />; }
+function FS({ ch, ...props }) { return <select {...props} style={{ ...IS, ...(props.style || {}) }}>{ch}</select>; }
+function FT(props) { return <textarea {...props} style={{ ...IS, height: 76, resize: "vertical", ...(props.style || {}) }} onFocus={onF} onBlur={onB} />; }
 function FL({ ch }) { return <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(201,168,76,.65)", textTransform: "uppercase", letterSpacing: ".09em", marginBottom: 4, fontFamily: "'Cinzel',serif" }}>{ch}</div>; }
 function GB({ ch, onClick, ghost, full, sm, red, style: s = {} }) {
   const base = { padding: sm ? "6px 13px" : "10px 20px", borderRadius: 9, fontWeight: 700, fontSize: sm ? 11 : 13, border: "none", cursor: "pointer", transition: "all .18s", fontFamily: "'Cinzel',serif", letterSpacing: .4, ...s };
@@ -211,17 +310,41 @@ function GB({ ch, onClick, ghost, full, sm, red, style: s = {} }) {
 function SH({ ch, action }) { return <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><h3 style={{ fontFamily: "'Cinzel',serif", fontSize: 15, color: "#C9A84C", letterSpacing: .4 }}>{ch}</h3>{action}</div>; }
 function Nil({ icon, msg }) { return <div style={{ textAlign: "center", padding: "36px 16px", color: "rgba(255,255,255,.18)" }}><div style={{ fontSize: 36, marginBottom: 8 }}>{icon}</div><div style={{ fontSize: 12, fontFamily: "'Cinzel',serif" }}>{msg}</div></div>; }
 function Modal({ title, ch, onClose, wide = false }) {
-  return <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.82)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 600, backdropFilter: "blur(8px)" }} onClick={onClose}><div style={{ background: "#0C0906", border: "1px solid rgba(201,168,76,.25)", borderRadius: 18, padding: "30px 34px", width: wide ? 680 : 500, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 0 70px rgba(201,168,76,.08)", position: "relative" }} onClick={e => e.stopPropagation()}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: "linear-gradient(90deg,transparent,#C9A84C,transparent)", borderRadius: "18px 18px 0 0" }} /><h2 style={{ fontFamily: "'Cinzel',serif", fontSize: 19, color: "#C9A84C", marginBottom: 18, letterSpacing: .8 }}>{title}</h2>{ch}</div></div>;
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.82)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 600, backdropFilter: "blur(8px)" }} onClick={onClose}>
+      <div style={{ background: "#0C0906", border: "1px solid rgba(201,168,76,.25)", borderRadius: 18, padding: "30px 34px", width: wide ? 680 : 500, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 0 70px rgba(201,168,76,.08)", position: "relative" }} onClick={e => e.stopPropagation()}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: "linear-gradient(90deg,transparent,#C9A84C,transparent)", borderRadius: "18px 18px 0 0" }} />
+        <h2 style={{ fontFamily: "'Cinzel',serif", fontSize: 19, color: "#C9A84C", marginBottom: 18, letterSpacing: .8 }}>{title}</h2>
+        {ch}
+      </div>
+    </div>
+  );
 }
 function Confirm({ msg, onYes, onNo }) {
-  return <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 700, backdropFilter: "blur(10px)" }} onClick={onNo}><div style={{ background: "#0C0906", border: "1px solid rgba(180,40,40,.4)", borderRadius: 16, padding: 28, maxWidth: 360, textAlign: "center", boxShadow: "0 0 50px rgba(180,40,40,.15)" }} onClick={e => e.stopPropagation()}><div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div><div style={{ fontFamily: "'Cinzel',serif", fontSize: 14, color: "#EDE8DF", lineHeight: 1.7, marginBottom: 20 }}>{msg}</div><div style={{ display: "flex", gap: 10, justifyContent: "center" }}><GB ch="Cancel" ghost onClick={onNo} /><GB ch="Yes, Delete" red onClick={onYes} /></div></div></div>;
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 700, backdropFilter: "blur(10px)" }} onClick={onNo}>
+      <div style={{ background: "#0C0906", border: "1px solid rgba(180,40,40,.4)", borderRadius: 16, padding: 28, maxWidth: 360, textAlign: "center", boxShadow: "0 0 50px rgba(180,40,40,.15)" }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
+        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 14, color: "#EDE8DF", lineHeight: 1.7, marginBottom: 20 }}>{msg}</div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}><GB ch="Cancel" ghost onClick={onNo} /><GB ch="Yes, Delete" red onClick={onYes} /></div>
+      </div>
+    </div>
+  );
 }
 
 /* ─── SPLASH ─────────────────────────────────────────────────*/
 function Splash({ onDone }) {
   const [p, setP] = useState(0);
   const q = rand(QUOTES);
-  useEffect(() => { const ts = [setTimeout(() => setP(1), 300), setTimeout(() => setP(2), 1100), setTimeout(() => setP(3), 2100), setTimeout(() => onDone(), 3900)]; return () => ts.forEach(clearTimeout); }, []);
+  useEffect(() => {
+    const ts = [
+      setTimeout(() => setP(1), 300),
+      setTimeout(() => setP(2), 1100),
+      setTimeout(() => setP(3), 2100),
+      setTimeout(() => onDone(), 3900)
+    ];
+    return () => ts.forEach(clearTimeout);
+  }, [onDone]);
   return (
     <div style={{ position: "fixed", inset: 0, background: "#050302", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, overflow: "hidden" }}>
       <Particles />
@@ -269,22 +392,28 @@ export default function App() {
   const [loginErr, setLoginErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState({ msg: "", type: "success" });
+
   // Forum
   const [forums, setForums] = useState(() => { try { return JSON.parse(localStorage.getItem("bw_forums") || "[]"); } catch { return []; } });
   const [showNewPost, setShowNewPost] = useState(false);
   const [newPost, setNewPost] = useState({ title: "", body: "", bookTitle: "" });
   const [openPost, setOpenPost] = useState(null);
   const [newReply, setNewReply] = useState("");
+
   // Streak
   const [streakData, setStreakData] = useState(() => { try { return JSON.parse(localStorage.getItem("bw_streak") || "{}"); } catch { return {}; } });
+
   // Timer
   const [timerRunning, setTimerRunning] = useState(false);
   const [timerSecs, setTimerSecs] = useState(0);
   const [timerBook, setTimerBook] = useState("");
+
   // Challenges
   const [completedChallenges, setCompletedChallenges] = useState(() => { try { return JSON.parse(localStorage.getItem("bw_challenges") || "[]"); } catch { return []; } });
+
   // Book of Month
   const [botm, setBotm] = useState(() => { try { return JSON.parse(localStorage.getItem("bw_botm") || "null"); } catch { return null; } });
+
   // Recommend
   const [showRecommend, setShowRecommend] = useState(false);
   const [recForm, setRecForm] = useState({ toMemberId: "", bookTitle: "", bookAuthor: "", note: "" });
@@ -309,7 +438,8 @@ export default function App() {
   const loadData = useCallback(async () => {
     if (!USE_SB) return;
     const [ms, bs] = await Promise.all([SB.select("members"), SB.select("books")]);
-    setMembers(ms); setBooks(bs);
+    setMembers(ms);
+    setBooks(bs);
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -322,7 +452,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, [timerRunning]);
 
-  // Save forums/streak to localStorage
+  // Persist to localStorage
   useEffect(() => { localStorage.setItem("bw_forums", JSON.stringify(forums)); }, [forums]);
   useEffect(() => { localStorage.setItem("bw_streak", JSON.stringify(streakData)); }, [streakData]);
   useEffect(() => { localStorage.setItem("bw_challenges", JSON.stringify(completedChallenges)); }, [completedChallenges]);
@@ -334,8 +464,15 @@ export default function App() {
 
   async function doLogin() {
     setLoading(true); setLoginErr("");
-    if (USE_SB) await loadData();
-    const found = members.find(m => (m.email || "").toLowerCase().trim() === loginEmail.toLowerCase().trim());
+    // FIX: load fresh data before login so members list is up-to-date
+    let freshMembers = members;
+    if (USE_SB) {
+      freshMembers = await SB.select("members");
+      setMembers(freshMembers);
+      const freshBooks = await SB.select("books");
+      setBooks(freshBooks);
+    }
+    const found = freshMembers.find(m => (m.email || "").toLowerCase().trim() === loginEmail.toLowerCase().trim());
     if (!found) { setLoginErr("⚡ No wizard found. Please register!"); setLoading(false); return; }
     setUser(found); localStorage.setItem("bw_user", JSON.stringify(found)); setScreen("app"); setLoading(false);
   }
@@ -344,11 +481,18 @@ export default function App() {
     if (!reg.name || !reg.email) { setRegErr("Name and email are required."); return; }
     if (!reg.bio) { setRegErr("Please write a short bio."); return; }
     if (!reg.photo) { setRegErr("Please upload your photo."); return; }
-    if (members.find(m => (m.email || "").toLowerCase() === reg.email.toLowerCase())) { setRegErr("Email already registered!"); return; }
     setLoading(true);
     let lm = members;
     if (USE_SB) { lm = await SB.select("members"); setMembers(lm); }
-    const newM = { id: nextId(lm), name: reg.name, email: reg.email, phone: reg.phone, birthdaymonth: reg.birthdayMonth, birthdaydate: reg.birthdayDate, state: reg.state, city: reg.city, country: reg.country, postaladdress: reg.postalAddress, instagramlink: reg.instagramLink, goodreadslink: reg.goodreadsLink, bio: reg.bio, photo: reg.photo, yearlytarget: 12, joindate: today(), isadmin: false };
+    if (lm.find(m => (m.email || "").toLowerCase() === reg.email.toLowerCase())) { setRegErr("Email already registered!"); setLoading(false); return; }
+    const newM = {
+      id: nextId(lm), name: reg.name, email: reg.email, phone: reg.phone,
+      birthdaymonth: reg.birthdayMonth, birthdaydate: reg.birthdayDate,
+      state: reg.state, city: reg.city, country: reg.country,
+      postaladdress: reg.postalAddress, instagramlink: reg.instagramLink,
+      goodreadslink: reg.goodreadsLink, bio: reg.bio, photo: reg.photo,
+      yearlytarget: 12, joindate: today(), isadmin: false
+    };
     if (USE_SB) { await SB.insert("members", newM); await loadData(); } else setMembers(ms => [...ms, newM]);
     await sendWelcomeEmail(newM);
     setNewMemberName(newM.name); setUser(newM); setLoading(false); setWelcomeMsg(true);
@@ -363,9 +507,25 @@ export default function App() {
       const tp = parseInt(bf.totalPages) || 0;
       const fp = parseInt(bf.finishedPages) || 0;
       const pct = tp > 0 ? Math.round((fp / tp) * 100) : 0;
-      const bk = { id: editBook ? editBook.id : "b" + Date.now(), memberid: user.id, membername: user.name, title: bf.title, author: bf.author, genre: bf.genre, origlang: bf.origLang, readlang: bf.readLang, startdate: bf.startDate, startmonth: bf.startDate ? MONTHS[new Date(bf.startDate).getMonth()] : "", enddate: bf.endDate, endmonth: bf.endDate ? MONTHS[new Date(bf.endDate).getMonth()] : "", totalpages: tp, finishedpages: fp, pct, status: bf.status, rating: bf.rating, review: bf.review, customcover: bf.customCover || "" };
-      if (USE_SB) { if (editBook) await SB.update("books", bk, bk.id); else await SB.insert("books", bk); await loadData(); }
-      else { if (editBook) setBooks(bs => bs.map(b => b.id === editBook.id ? bk : b)); else setBooks(bs => [...bs, bk]); }
+      const bk = {
+        id: editBook ? editBook.id : "b" + Date.now(),
+        memberid: user.id, membername: user.name,
+        title: bf.title, author: bf.author, genre: bf.genre,
+        origlang: bf.origLang, readlang: bf.readLang,
+        startdate: bf.startDate, startmonth: bf.startDate ? MONTHS[new Date(bf.startDate).getMonth()] : "",
+        enddate: bf.endDate, endmonth: bf.endDate ? MONTHS[new Date(bf.endDate).getMonth()] : "",
+        totalpages: tp, finishedpages: fp, pct,
+        status: bf.status, rating: bf.rating, review: bf.review,
+        customcover: bf.customCover || ""
+      };
+      if (USE_SB) {
+        if (editBook) await SB.update("books", bk, bk.id);
+        else await SB.insert("books", bk);
+        await loadData();
+      } else {
+        if (editBook) setBooks(bs => bs.map(b => b.id === editBook.id ? bk : b));
+        else setBooks(bs => [...bs, bk]);
+      }
       const wasEdit = !!editBook;
       setShowBookMod(false); setEditBook(null); setBf(eBook);
       showToast(wasEdit ? "Book updated! 📚" : "Book added to your shelf! ✨");
@@ -389,8 +549,15 @@ export default function App() {
 
   async function doDelete() {
     const { type, id } = confirmDel;
-    if (type === "book") { if (USE_SB) await SB.delete("books", id); else setBooks(bs => bs.filter(b => b.id !== id)); }
-    if (type === "member") { if (USE_SB) { await SB.deleteWhere("books", "memberid", id); await SB.delete("members", id); await loadData(); } else { setBooks(bs => bs.filter(b => b.memberid !== id)); setMembers(ms => ms.filter(m => m.id !== id)); } if (id === user.id) { setUser(null); localStorage.removeItem("bw_user"); setScreen("login"); } }
+    if (type === "book") {
+      if (USE_SB) await SB.delete("books", id);
+      else setBooks(bs => bs.filter(b => b.id !== id));
+    }
+    if (type === "member") {
+      if (USE_SB) { await SB.deleteWhere("books", "memberid", id); await SB.delete("members", id); await loadData(); }
+      else { setBooks(bs => bs.filter(b => b.memberid !== id)); setMembers(ms => ms.filter(m => m.id !== id)); }
+      if (id === user.id) { setUser(null); localStorage.removeItem("bw_user"); setScreen("login"); }
+    }
     if (USE_SB) await loadData();
     setConfirmDel(null); showToast("Deleted successfully", "error");
   }
@@ -402,17 +569,26 @@ export default function App() {
   const topG = Object.entries(gCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
   const actR = new Set(mFin.map(b => b.memberid)).size;
   const prevM = MONTHS[MONTHS.indexOf(selMonth) - 1] || MONTHS[11];
-  const mStats = members.map(m => { const cur = books.filter(b => b.memberid === m.id && b.status === "Finished" && b.endmonth === selMonth); const prv = books.filter(b => b.memberid === m.id && b.status === "Finished" && b.endmonth === prevM); const imp = prv.length > 0 ? Math.round(((cur.length - prv.length) / prv.length) * 100) : cur.length > 0 ? 100 : 0; return { ...m, curB: cur.length, curP: cur.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0), prvB: prv.length, imp }; });
+  const mStats = members.map(m => {
+    const cur = books.filter(b => b.memberid === m.id && b.status === "Finished" && b.endmonth === selMonth);
+    const prv = books.filter(b => b.memberid === m.id && b.status === "Finished" && b.endmonth === prevM);
+    const imp = prv.length > 0 ? Math.round(((cur.length - prv.length) / prv.length) * 100) : cur.length > 0 ? 100 : 0;
+    return { ...m, curB: cur.length, curP: cur.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0), prvB: prv.length, imp };
+  });
   const yLine = MONTHS.map(mo => ({ l: mo.slice(0, 3), v: books.filter(b => b.status === "Finished" && b.endmonth === mo).length }));
   const allG = books.reduce((a, b) => { if (b.status === "Finished") a[b.genre] = (a[b.genre] || 0) + 1; return a; }, {});
   const gColors = ["#C9A84C", "#7B2D2D", "#1A472A", "#0E1A40", "#B8540A", "#5C2D91", "#2E7D32", "#1565C0"];
   const gSlices = Object.entries(allG).slice(0, 7).map(([g, v], i) => ({ g, v, c: gColors[i % 8] }));
-  const board = members.map(m => { const mf = books.filter(b => b.memberid === m.id && b.status === "Finished"); return { ...m, bR: mf.length, pR: mf.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0) }; }).sort((a, b) => b.bR - a.bR);
+  const board = members.map(m => {
+    const mf = books.filter(b => b.memberid === m.id && b.status === "Finished");
+    return { ...m, bR: mf.length, pR: mf.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0) };
+  }).sort((a, b) => b.bR - a.bR);
 
   // Upcoming birthdays
   const upcomingBirthdays = members.filter(m => {
     if (!m.birthdaymonth || !m.birthdaydate) return false;
-    const now = new Date(); const bday = new Date(now.getFullYear(), MONTHS.indexOf(m.birthdaymonth), parseInt(m.birthdaydate));
+    const now = new Date();
+    const bday = new Date(now.getFullYear(), MONTHS.indexOf(m.birthdaymonth), parseInt(m.birthdaydate));
     if (bday < now) bday.setFullYear(now.getFullYear() + 1);
     const diff = (bday - now) / (1000 * 60 * 60 * 24);
     return diff <= 30;
@@ -452,6 +628,7 @@ export default function App() {
   ];
 
   if (splash) return <div><style>{css}</style><Splash onDone={() => setSplash(false)} /></div>;
+
   if (welcomeMsg) return (
     <div style={{ position: "fixed", inset: 0, background: "#060402", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
       <style>{css}</style><Particles />
@@ -479,15 +656,20 @@ export default function App() {
           <div style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", letterSpacing: 2, animation: "glw 3s infinite" }}>BOOK WIZARDS</div>
           <div style={{ fontSize: 11, color: "var(--sub)", marginTop: 3, letterSpacing: 3, fontFamily: "'Cinzel',serif" }}>READING · MAGIC · COMMUNITY</div>
         </div>
+
         {screen === "login" && (
           <>
             <FL ch="Email Address" />
             <FI value={loginEmail} onChange={e => setLoginEmail(e.target.value)} placeholder="wizard@email.com" type="email" onKeyDown={e => e.key === "Enter" && doLogin()} />
             {loginErr && <div style={{ color: "#E07070", fontSize: 12, marginBottom: 10, textAlign: "center" }}>{loginErr}</div>}
             <GB ch={loading ? "🌀 Summoning..." : "⚡ Enter the Library"} onClick={doLogin} full />
-            <div style={{ textAlign: "center", marginTop: 14, fontSize: 13, color: "var(--sub)" }}>New wizard?{" "}<button style={{ background: "none", border: "none", color: "#C9A84C", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'Cinzel',serif" }} onClick={() => setScreen("register")}>Request Admission</button></div>
+            <div style={{ textAlign: "center", marginTop: 14, fontSize: 13, color: "var(--sub)" }}>
+              New wizard?{" "}
+              <button style={{ background: "none", border: "none", color: "#C9A84C", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'Cinzel',serif" }} onClick={() => setScreen("register")}>Request Admission</button>
+            </div>
           </>
         )}
+
         {screen === "register" && (
           <>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 14px" }}>
@@ -522,7 +704,10 @@ export default function App() {
             </div>
             {regErr && <div style={{ color: "#E07070", fontSize: 12, margin: "6px 0", textAlign: "center" }}>{regErr}</div>}
             <GB ch={loading ? "🌀 Registering..." : "🧙 Join Book Wizards"} onClick={doRegister} full style={{ marginTop: 10 }} />
-            <div style={{ textAlign: "center", marginTop: 10, fontSize: 13, color: "var(--sub)" }}>Already a wizard?{" "}<button style={{ background: "none", border: "none", color: "#C9A84C", fontWeight: 700, fontSize: 13, cursor: "pointer" }} onClick={() => setScreen("login")}>Sign In</button></div>
+            <div style={{ textAlign: "center", marginTop: 10, fontSize: 13, color: "var(--sub)" }}>
+              Already a wizard?{" "}
+              <button style={{ background: "none", border: "none", color: "#C9A84C", fontWeight: 700, fontSize: 13, cursor: "pointer" }} onClick={() => setScreen("login")}>Sign In</button>
+            </div>
           </>
         )}
       </div>
@@ -554,7 +739,11 @@ export default function App() {
               {sideOpen && <span style={{ fontSize: 11, fontWeight: page === n.id ? 700 : 400, fontFamily: "'Cinzel',serif", letterSpacing: .3, whiteSpace: "nowrap" }}>{n.lb}</span>}
             </div>
           ))}
-          {user?.isadmin && <div onClick={() => setPage("admin")} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 9px", borderRadius: 9, marginTop: 8, paddingTop: 12, borderTop: "1px solid var(--bdr)", cursor: "pointer", color: page === "admin" ? "#C9A84C" : "rgba(224,112,112,.6)", transition: "all .14s" }} onMouseEnter={e => e.currentTarget.style.color = "rgba(224,112,112,.9)"} onMouseLeave={e => e.currentTarget.style.color = page === "admin" ? "#C9A84C" : "rgba(224,112,112,.6)"}><span style={{ fontSize: 15 }}>⚙️</span>{sideOpen && <span style={{ fontSize: 11, fontFamily: "'Cinzel',serif" }}>Admin Panel</span>}</div>}
+          {user?.isadmin && (
+            <div onClick={() => setPage("admin")} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 9px", borderRadius: 9, marginTop: 8, paddingTop: 12, borderTop: "1px solid var(--bdr)", cursor: "pointer", color: page === "admin" ? "#C9A84C" : "rgba(224,112,112,.6)", transition: "all .14s" }} onMouseEnter={e => e.currentTarget.style.color = "rgba(224,112,112,.9)"} onMouseLeave={e => e.currentTarget.style.color = page === "admin" ? "#C9A84C" : "rgba(224,112,112,.6)"}>
+              <span style={{ fontSize: 15 }}>⚙️</span>{sideOpen && <span style={{ fontSize: 11, fontFamily: "'Cinzel',serif" }}>Admin Panel</span>}
+            </div>
+          )}
         </div>
         <div style={{ padding: "11px 9px", borderTop: "1px solid var(--bdr)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", borderRadius: 9, padding: "6px", transition: "background .14s" }} onClick={() => { setPe({ ...user }); setShowProfEdit(true); }} onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,.06)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
@@ -624,7 +813,6 @@ export default function App() {
                   {fin.length === 0 && <Nil icon="📚" msg="No finished books yet" />}
                 </div>
               </div>
-              {/* Book of the Month */}
               <div style={{ ...card, padding: 18 }}>
                 <SH ch="📖 Book of the Month" action={user?.isadmin && <GB ch="Set" sm ghost onClick={() => { const t = prompt("Enter Book Title for Book of the Month:"); if (t) { const nb = { title: t, setBy: user.name, month: MONTHS[new Date().getMonth()] }; setBotm(nb); localStorage.setItem("bw_botm", JSON.stringify(nb)); showToast("Book of the Month set! 📖"); } }} />} />
                 {botm ? (
@@ -635,7 +823,6 @@ export default function App() {
                 ) : <Nil icon="📖" msg="No book set yet. Admin can set Book of the Month!" />}
               </div>
             </div>
-            {/* Upcoming Birthdays */}
             {upcomingBirthdays.length > 0 && (
               <div style={{ ...card, padding: 18 }}>
                 <SH ch="🎂 Upcoming Birthdays (Next 30 Days)" />
@@ -649,7 +836,6 @@ export default function App() {
                 </div>
               </div>
             )}
-            {/* My Recommendations received */}
             {recommendations.filter(r => r.toMemberId === user.id).length > 0 && (
               <div style={{ ...card, padding: 18, marginTop: 16 }}>
                 <SH ch="📬 Book Recommendations for You" />
@@ -722,18 +908,47 @@ export default function App() {
               ))}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
-              <div style={{ ...card, padding: 16 }}><SH ch="🏅 Top 5 — Most Books" />{mStats.filter(m => m.curB > 0).sort((a, b) => b.curB - a.curB).slice(0, 5).map((m, i) => (
-                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 9, paddingBottom: 9, borderBottom: "1px solid var(--bdr)" }}><div style={{ fontSize: i < 3 ? 17 : 12, width: 22, textAlign: "center" }}>{i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</div><Av m={m} size={24} /><div style={{ flex: 1 }}><div style={{ fontSize: 12, fontWeight: 700, fontFamily: "'Cinzel',serif" }}>{m.name}</div><div style={{ fontSize: 10, color: "var(--sub)" }}>{m.city}</div></div><div style={{ fontFamily: "'Cinzel',serif", fontSize: 18, color: "#C9A84C" }}>{m.curB}</div></div>
-              ))}{mStats.filter(m => m.curB > 0).length === 0 && <Nil icon="📚" msg={`No data for ${selMonth}`} />}</div>
-              <div style={{ ...card, padding: 16 }}><SH ch="📜 Top 5 — Most Pages" />{mStats.filter(m => m.curP > 0).sort((a, b) => b.curP - a.curP).slice(0, 5).map((m, i) => (
-                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 9, paddingBottom: 9, borderBottom: "1px solid var(--bdr)" }}><div style={{ fontSize: i < 3 ? 17 : 12, width: 22, textAlign: "center" }}>{i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</div><Av m={m} size={24} /><div style={{ flex: 1 }}><div style={{ fontSize: 12, fontWeight: 700, fontFamily: "'Cinzel',serif" }}>{m.name}</div><div style={{ fontSize: 10, color: "var(--sub)" }}>{m.city}</div></div><div style={{ textAlign: "right" }}><div style={{ fontFamily: "'Cinzel',serif", fontSize: 17, color: "#6B9FD4" }}>{m.curP.toLocaleString()}</div><div style={{ fontSize: 9, color: "var(--mut)" }}>pp</div></div></div>
-              ))}{mStats.filter(m => m.curP > 0).length === 0 && <Nil icon="📜" msg={`No data for ${selMonth}`} />}</div>
+              <div style={{ ...card, padding: 16 }}><SH ch="🏅 Top 5 — Most Books" />
+                {mStats.filter(m => m.curB > 0).sort((a, b) => b.curB - a.curB).slice(0, 5).map((m, i) => (
+                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 9, paddingBottom: 9, borderBottom: "1px solid var(--bdr)" }}>
+                    <div style={{ fontSize: i < 3 ? 17 : 12, width: 22, textAlign: "center" }}>{i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</div>
+                    <Av m={m} size={24} />
+                    <div style={{ flex: 1 }}><div style={{ fontSize: 12, fontWeight: 700, fontFamily: "'Cinzel',serif" }}>{m.name}</div><div style={{ fontSize: 10, color: "var(--sub)" }}>{m.city}</div></div>
+                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 18, color: "#C9A84C" }}>{m.curB}</div>
+                  </div>
+                ))}
+                {mStats.filter(m => m.curB > 0).length === 0 && <Nil icon="📚" msg={`No data for ${selMonth}`} />}
+              </div>
+              <div style={{ ...card, padding: 16 }}><SH ch="📜 Top 5 — Most Pages" />
+                {mStats.filter(m => m.curP > 0).sort((a, b) => b.curP - a.curP).slice(0, 5).map((m, i) => (
+                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 9, paddingBottom: 9, borderBottom: "1px solid var(--bdr)" }}>
+                    <div style={{ fontSize: i < 3 ? 17 : 12, width: 22, textAlign: "center" }}>{i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</div>
+                    <Av m={m} size={24} />
+                    <div style={{ flex: 1 }}><div style={{ fontSize: 12, fontWeight: 700, fontFamily: "'Cinzel',serif" }}>{m.name}</div><div style={{ fontSize: 10, color: "var(--sub)" }}>{m.city}</div></div>
+                    <div style={{ textAlign: "right" }}><div style={{ fontFamily: "'Cinzel',serif", fontSize: 17, color: "#6B9FD4" }}>{m.curP.toLocaleString()}</div><div style={{ fontSize: 9, color: "var(--mut)" }}>pp</div></div>
+                  </div>
+                ))}
+                {mStats.filter(m => m.curP > 0).length === 0 && <Nil icon="📜" msg={`No data for ${selMonth}`} />}
+              </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <div style={{ ...card, padding: 16 }}><SH ch="🚀 Most Improved" /><div style={{ fontSize: 11, color: "var(--sub)", marginBottom: 9 }}>vs {prevM}</div>{mStats.filter(m => m.curB > 0).sort((a, b) => b.imp - a.imp).slice(0, 5).map((m, i) => (
-                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 9, paddingBottom: 9, borderBottom: "1px solid var(--bdr)" }}><div style={{ fontSize: 11, width: 16, color: "var(--sub)" }}>{i + 1}</div><div style={{ flex: 1 }}><div style={{ fontSize: 12, fontWeight: 700, fontFamily: "'Cinzel',serif" }}>{m.name}</div><div style={{ fontSize: 10, color: "var(--sub)" }}>{m.prvB}→{m.curB} books</div></div><div style={{ padding: "2px 8px", borderRadius: 16, fontWeight: 700, fontSize: 11, background: m.imp > 0 ? "rgba(111,175,123,.15)" : "rgba(224,112,112,.1)", color: m.imp > 0 ? "#6FAF7B" : "#E07070" }}>{m.imp > 0 ? "+" : ""}{m.imp}%</div></div>
-              ))}{mStats.filter(m => m.curB > 0).length === 0 && <Nil icon="📈" msg="No data" />}</div>
-              <div style={{ ...card, padding: 16 }}><SH ch="📊 Contribution" />{mStats.filter(m => m.curB > 0).map(m => { const p = mFin.length > 0 ? Math.round((m.curB / mFin.length) * 100) : 0; return <div key={m.id} style={{ marginBottom: 9 }}><div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}><span style={{ fontFamily: "'Cinzel',serif", fontSize: 11 }}>{m.name}</span><span style={{ color: "#C9A84C", fontWeight: 700 }}>{m.curB} ({p}%)</span></div><PBar p={p} c={abg(m.name)} h={5} /></div>; })}{mStats.filter(m => m.curB > 0).length === 0 && <Nil icon="📊" msg="No activity" />}</div>
+              <div style={{ ...card, padding: 16 }}><SH ch="🚀 Most Improved" /><div style={{ fontSize: 11, color: "var(--sub)", marginBottom: 9 }}>vs {prevM}</div>
+                {mStats.filter(m => m.curB > 0).sort((a, b) => b.imp - a.imp).slice(0, 5).map((m, i) => (
+                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 9, paddingBottom: 9, borderBottom: "1px solid var(--bdr)" }}>
+                    <div style={{ fontSize: 11, width: 16, color: "var(--sub)" }}>{i + 1}</div>
+                    <div style={{ flex: 1 }}><div style={{ fontSize: 12, fontWeight: 700, fontFamily: "'Cinzel',serif" }}>{m.name}</div><div style={{ fontSize: 10, color: "var(--sub)" }}>{m.prvB}→{m.curB} books</div></div>
+                    <div style={{ padding: "2px 8px", borderRadius: 16, fontWeight: 700, fontSize: 11, background: m.imp > 0 ? "rgba(111,175,123,.15)" : "rgba(224,112,112,.1)", color: m.imp > 0 ? "#6FAF7B" : "#E07070" }}>{m.imp > 0 ? "+" : ""}{m.imp}%</div>
+                  </div>
+                ))}
+                {mStats.filter(m => m.curB > 0).length === 0 && <Nil icon="📈" msg="No data" />}
+              </div>
+              <div style={{ ...card, padding: 16 }}><SH ch="📊 Contribution" />
+                {mStats.filter(m => m.curB > 0).map(m => {
+                  const p = mFin.length > 0 ? Math.round((m.curB / mFin.length) * 100) : 0;
+                  return <div key={m.id} style={{ marginBottom: 9 }}><div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}><span style={{ fontFamily: "'Cinzel',serif", fontSize: 11 }}>{m.name}</span><span style={{ color: "#C9A84C", fontWeight: 700 }}>{m.curB} ({p}%)</span></div><PBar p={p} c={abg(m.name)} h={5} /></div>;
+                })}
+                {mStats.filter(m => m.curB > 0).length === 0 && <Nil icon="📊" msg="No activity" />}
+              </div>
             </div>
           </div>
         )}
@@ -792,7 +1007,14 @@ export default function App() {
             </div>
             {!openPost ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {forums.length === 0 && <div style={{ ...card, padding: 32, textAlign: "center" }}><div style={{ fontSize: 40, marginBottom: 12 }}>💬</div><div style={{ fontFamily: "'Cinzel',serif", fontSize: 16, color: "#C9A84C", marginBottom: 8 }}>No discussions yet</div><div style={{ fontSize: 13, color: "var(--sub)", marginBottom: 16 }}>Start the first discussion!</div><GB ch="+ Start Discussion" onClick={() => setShowNewPost(true)} /></div>}
+                {forums.length === 0 && (
+                  <div style={{ ...card, padding: 32, textAlign: "center" }}>
+                    <div style={{ fontSize: 40, marginBottom: 12 }}>💬</div>
+                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 16, color: "#C9A84C", marginBottom: 8 }}>No discussions yet</div>
+                    <div style={{ fontSize: 13, color: "var(--sub)", marginBottom: 16 }}>Start the first discussion!</div>
+                    <GB ch="+ Start Discussion" onClick={() => setShowNewPost(true)} />
+                  </div>
+                )}
                 {forums.map((post, i) => {
                   const author = members.find(m => m.id === post.authorId);
                   return (
@@ -816,9 +1038,21 @@ export default function App() {
                   <div style={{ display: "flex", alignItems: "center", gap: 7 }}><Av m={members.find(m => m.id === openPost.authorId)} size={22} /><span style={{ fontSize: 12, color: "var(--sub)" }}>{members.find(m => m.id === openPost.authorId)?.name}</span><span style={{ fontSize: 11, color: "var(--mut)" }}>· {openPost.date}</span></div>
                 </div>
                 <div style={{ fontFamily: "'Cinzel',serif", fontSize: 13, color: "#C9A84C", marginBottom: 10 }}>Replies ({(openPost.replies || []).length})</div>
-                {(openPost.replies || []).map((r, i) => { const rA = members.find(m => m.id === r.authorId); return (<div key={i} style={{ ...card, padding: 14, marginBottom: 8 }}><div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.7, marginBottom: 8 }}>{r.body}</div><div style={{ display: "flex", alignItems: "center", gap: 7 }}><Av m={rA} size={18} /><span style={{ fontSize: 11, color: "var(--sub)" }}>{rA?.name}</span><span style={{ fontSize: 10, color: "var(--mut)" }}>· {r.date}</span></div></div>); })}
+                {(openPost.replies || []).map((r, i) => {
+                  const rA = members.find(m => m.id === r.authorId);
+                  return (<div key={i} style={{ ...card, padding: 14, marginBottom: 8 }}><div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.7, marginBottom: 8 }}>{r.body}</div><div style={{ display: "flex", alignItems: "center", gap: 7 }}><Av m={rA} size={18} /><span style={{ fontSize: 11, color: "var(--sub)" }}>{rA?.name}</span><span style={{ fontSize: 10, color: "var(--mut)" }}>· {r.date}</span></div></div>);
+                })}
                 {(openPost.replies || []).length === 0 && <div style={{ textAlign: "center", padding: 20, color: "var(--mut)", fontSize: 13 }}>No replies yet. Be the first!</div>}
-                <div style={{ marginTop: 14 }}><FT value={newReply} onChange={e => setNewReply(e.target.value)} placeholder="Write your reply..." style={{ height: 80, marginBottom: 8 }} /><GB ch="Post Reply 💬" onClick={() => { if (!newReply.trim()) return; const reply = { authorId: user.id, body: newReply, date: new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) }; const updated = { ...openPost, replies: [...(openPost.replies || []), reply] }; setForums(fs => fs.map(f => f.id === openPost.id ? updated : f)); setOpenPost(updated); setNewReply(""); showToast("Reply posted! 💬"); }} /></div>
+                <div style={{ marginTop: 14 }}>
+                  <FT value={newReply} onChange={e => setNewReply(e.target.value)} placeholder="Write your reply..." style={{ height: 80, marginBottom: 8 }} />
+                  <GB ch="Post Reply 💬" onClick={() => {
+                    if (!newReply.trim()) return;
+                    const reply = { authorId: user.id, body: newReply, date: new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) };
+                    const updated = { ...openPost, replies: [...(openPost.replies || []), reply] };
+                    setForums(fs => fs.map(f => f.id === openPost.id ? updated : f));
+                    setOpenPost(updated); setNewReply(""); showToast("Reply posted! 💬");
+                  }} />
+                </div>
               </div>
             )}
           </div>
@@ -848,8 +1082,17 @@ export default function App() {
                 {!alreadyIn && <GB ch="✅ Yes! I Read Today" onClick={() => { const updated = { ...streakData, [user.id]: { days: [...(myStreak.days || []), td], lastCheckin: td } }; setStreakData(updated); showToast(`Streak updated! ${(myStreak.days || []).length + 1} days 🔥`); }} />}
               </div>
               <div style={{ ...card, padding: 20 }}><SH ch="🏆 Streak Leaderboard" />
-                {members.map(m => { const ms = streakData[m.id] || { days: [], lastCheckin: "" }; const act = ms.lastCheckin === td || ms.lastCheckin === yd; return { ...m, streak: act ? (ms.days || []).length : 0, total: (ms.days || []).length }; }).sort((a, b) => b.streak - a.streak).map((m, i) => (
-                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid var(--bdr)" }}><div style={{ fontSize: i < 3 ? 18 : 13, width: 24, textAlign: "center" }}>{i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</div><Av m={m} size={28} /><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontFamily: "'Cinzel',serif", color: m.id === user.id ? "#C9A84C" : "var(--text)" }}>{m.name}{m.id === user.id ? " (You)" : ""}</div><div style={{ fontSize: 10, color: "var(--sub)" }}>{m.total} total days</div></div><div style={{ fontFamily: "'Cinzel',serif", fontSize: 20, color: "#E07070" }}>{m.streak}🔥</div></div>
+                {members.map(m => {
+                  const ms = streakData[m.id] || { days: [], lastCheckin: "" };
+                  const act = ms.lastCheckin === td || ms.lastCheckin === yd;
+                  return { ...m, streak: act ? (ms.days || []).length : 0, total: (ms.days || []).length };
+                }).sort((a, b) => b.streak - a.streak).map((m, i) => (
+                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid var(--bdr)" }}>
+                    <div style={{ fontSize: i < 3 ? 18 : 13, width: 24, textAlign: "center" }}>{i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</div>
+                    <Av m={m} size={28} />
+                    <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontFamily: "'Cinzel',serif", color: m.id === user.id ? "#C9A84C" : "var(--text)" }}>{m.name}{m.id === user.id ? " (You)" : ""}</div><div style={{ fontSize: 10, color: "var(--sub)" }}>{m.total} total days</div></div>
+                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 20, color: "#E07070" }}>{m.streak}🔥</div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -914,7 +1157,7 @@ export default function App() {
           const myFin = books.filter(b => b.memberid === user.id && b.status === "Finished");
           const myPages = myFin.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0);
           const topGenre = Object.entries(myFin.reduce((a, b) => { a[b.genre] = (a[b.genre] || 0) + 1; return a; }, {})).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
-          const topRated = myFin.sort((a, b) => b.rating - a.rating)[0];
+          const topRated = [...myFin].sort((a, b) => b.rating - a.rating)[0];
           const myStreak = streakData[user.id] || { days: [] };
           const myPoints = completedChallenges.filter(c => c.memberId === user.id).reduce((a, c) => a + (c.points || 0), 0);
           return (
@@ -986,13 +1229,22 @@ export default function App() {
             <p style={{ color: "var(--sub)", fontSize: 13, marginBottom: 20 }}>Top readers in Book Wizards</p>
             <div style={{ maxWidth: 600 }}>
               {board.map((m, i) => {
-                const isMe = m.id === user.id; const p = Math.min(100, Math.round((m.bR / (parseInt(m.yearlytarget) || 12)) * 100));
+                const isMe = m.id === user.id;
+                const p = Math.min(100, Math.round((m.bR / (parseInt(m.yearlytarget) || 12)) * 100));
                 return (
                   <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 17px", marginBottom: 8, background: isMe ? "rgba(201,168,76,.06)" : "var(--card)", border: "1px solid", borderColor: isMe ? "rgba(201,168,76,.35)" : "var(--bdr)", borderRadius: 12, transition: "transform .14s" }} onMouseEnter={e => e.currentTarget.style.transform = "translateX(3px)"} onMouseLeave={e => e.currentTarget.style.transform = ""}>
                     <div style={{ fontSize: i < 3 ? 24 : 14, width: 30, textAlign: "center", color: i === 0 ? "#F5C842" : i === 1 ? "#B8C8D8" : i === 2 ? "#C07840" : "var(--sub)" }}>{i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</div>
                     <Av m={m} size={38} />
-                    <div style={{ flex: 1 }}><div style={{ fontWeight: 700, fontSize: 13, fontFamily: "'Cinzel',serif", color: isMe ? "#C9A84C" : "var(--text)" }}>{m.name}{isMe ? " ⚡" : ""}</div><div style={{ fontSize: 11, color: "var(--sub)", marginBottom: 3 }}>📍 {m.city}, {m.country}</div><div style={{ display: "flex", gap: 5, alignItems: "center" }}><PBar p={p} c={i === 0 ? "#F5C842" : "#C9A84C"} h={4} /><span style={{ fontSize: 9, color: "var(--mut)", whiteSpace: "nowrap" }}>{p}%</span></div></div>
-                    <div style={{ textAlign: "right" }}><div style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: i === 0 ? "#F5C842" : i === 1 ? "#B8C8D8" : i === 2 ? "#C07840" : "#C9A84C", lineHeight: 1 }}>{m.bR}</div><div style={{ fontSize: 9, color: "var(--mut)" }}>books</div><div style={{ fontSize: 10, color: "var(--sub)", marginTop: 1 }}>{m.pR.toLocaleString()} pp</div></div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, fontFamily: "'Cinzel',serif", color: isMe ? "#C9A84C" : "var(--text)" }}>{m.name}{isMe ? " ⚡" : ""}</div>
+                      <div style={{ fontSize: 11, color: "var(--sub)", marginBottom: 3 }}>📍 {m.city}, {m.country}</div>
+                      <div style={{ display: "flex", gap: 5, alignItems: "center" }}><PBar p={p} c={i === 0 ? "#F5C842" : "#C9A84C"} h={4} /><span style={{ fontSize: 9, color: "var(--mut)", whiteSpace: "nowrap" }}>{p}%</span></div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: i === 0 ? "#F5C842" : i === 1 ? "#B8C8D8" : i === 2 ? "#C07840" : "#C9A84C", lineHeight: 1 }}>{m.bR}</div>
+                      <div style={{ fontSize: 9, color: "var(--mut)" }}>books</div>
+                      <div style={{ fontSize: 10, color: "var(--sub)", marginTop: 1 }}>{m.pR.toLocaleString()} pp</div>
+                    </div>
                   </div>
                 );
               })}
@@ -1008,8 +1260,34 @@ export default function App() {
             <div style={{ ...card, overflow: "hidden" }}>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                  <thead><tr style={{ background: "var(--card2)", borderBottom: "1px solid var(--bdr)" }}>{["", "ID", "Name", "Email", "City", "Country", "Phone", "Birthday", "Goal", "Joined", "Books", "Actions"].map(h => <th key={h} style={{ padding: "9px 11px", textAlign: "left", color: "rgba(201,168,76,.6)", fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: .4, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
-                  <tbody>{members.map(m => { const mf = books.filter(b => b.memberid === m.id && b.status === "Finished").length; return (<tr key={m.id} style={{ borderBottom: "1px solid rgba(201,168,76,.06)", transition: "background .12s" }} onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,.03)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}><td style={{ padding: "8px 11px" }}><Av m={m} size={26} /></td><td style={{ padding: "8px 11px", color: "#C9A84C", fontFamily: "'Cinzel',serif", fontSize: 11 }}>{m.id}</td><td style={{ padding: "8px 11px", fontWeight: 600 }}>{m.name}</td><td style={{ padding: "8px 11px", color: "var(--sub)" }}>{m.email}</td><td style={{ padding: "8px 11px", color: "var(--sub)" }}>{m.city}</td><td style={{ padding: "8px 11px", color: "var(--sub)" }}>{m.country}</td><td style={{ padding: "8px 11px", color: "var(--sub)" }}>{m.phone || "—"}</td><td style={{ padding: "8px 11px", color: "var(--sub)", whiteSpace: "nowrap" }}>{m.birthdaydate} {m.birthdaymonth}</td><td style={{ padding: "8px 11px", textAlign: "center" }}>{m.yearlytarget || 12}</td><td style={{ padding: "8px 11px", color: "var(--sub)", fontSize: 10, whiteSpace: "nowrap" }}>{fmt(m.joindate)}</td><td style={{ padding: "8px 11px", textAlign: "center", color: "#C9A84C", fontWeight: 700 }}>{mf}</td><td style={{ padding: "8px 11px" }}>{m.id !== user.id && <GB ch="🗑️" sm red onClick={() => setConfirmDel({ type: "member", id: m.id, name: m.name })} />}</td></tr>); })}</tbody>
+                  <thead>
+                    <tr style={{ background: "var(--card2)", borderBottom: "1px solid var(--bdr)" }}>
+                      {["", "ID", "Name", "Email", "City", "Country", "Phone", "Birthday", "Goal", "Joined", "Books", "Actions"].map(h => (
+                        <th key={h} style={{ padding: "9px 11px", textAlign: "left", color: "rgba(201,168,76,.6)", fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: .4, whiteSpace: "nowrap" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {members.map(m => {
+                      const mf = books.filter(b => b.memberid === m.id && b.status === "Finished").length;
+                      return (
+                        <tr key={m.id} style={{ borderBottom: "1px solid rgba(201,168,76,.06)", transition: "background .12s" }} onMouseEnter={e => e.currentTarget.style.background = "rgba(201,168,76,.03)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                          <td style={{ padding: "8px 11px" }}><Av m={m} size={26} /></td>
+                          <td style={{ padding: "8px 11px", color: "#C9A84C", fontFamily: "'Cinzel',serif", fontSize: 11 }}>{m.id}</td>
+                          <td style={{ padding: "8px 11px", fontWeight: 600 }}>{m.name}</td>
+                          <td style={{ padding: "8px 11px", color: "var(--sub)" }}>{m.email}</td>
+                          <td style={{ padding: "8px 11px", color: "var(--sub)" }}>{m.city}</td>
+                          <td style={{ padding: "8px 11px", color: "var(--sub)" }}>{m.country}</td>
+                          <td style={{ padding: "8px 11px", color: "var(--sub)" }}>{m.phone || "—"}</td>
+                          <td style={{ padding: "8px 11px", color: "var(--sub)", whiteSpace: "nowrap" }}>{m.birthdaydate} {m.birthdaymonth}</td>
+                          <td style={{ padding: "8px 11px", textAlign: "center" }}>{m.yearlytarget || 12}</td>
+                          <td style={{ padding: "8px 11px", color: "var(--sub)", fontSize: 10, whiteSpace: "nowrap" }}>{fmt(m.joindate)}</td>
+                          <td style={{ padding: "8px 11px", textAlign: "center", color: "#C9A84C", fontWeight: 700 }}>{mf}</td>
+                          <td style={{ padding: "8px 11px" }}>{m.id !== user.id && <GB ch="🗑️" sm red onClick={() => setConfirmDel({ type: "member", id: m.id, name: m.name })} />}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
                 </table>
               </div>
               {members.length === 0 && <Nil icon="🧙" msg="No members yet" />}
@@ -1040,7 +1318,11 @@ export default function App() {
                 <div style={{ fontFamily: "'Cinzel',serif", fontSize: 13, color: "#C9A84C", marginBottom: 10 }}>Books by {viewMember.name.split(" ")[0]}</div>
                 <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
                   {books.filter(b => b.memberid === viewMember.id).slice(0, 10).map(b => (
-                    <div key={b.id} style={{ textAlign: "center", width: 52 }}><Cover title={b.title} author={b.author} customCover={b.customcover} size={42} r={5} /><div style={{ fontSize: 8, color: "var(--sub)", marginTop: 3, lineHeight: 1.2, height: 18, overflow: "hidden" }}>{b.title.slice(0, 14)}</div><div style={{ fontSize: 7, padding: "1px 4px", borderRadius: 6, background: b.status === "Finished" ? "rgba(111,175,123,.15)" : b.status === "Reading" ? "rgba(107,159,212,.15)" : "rgba(255,255,255,.04)", color: b.status === "Finished" ? "#6FAF7B" : b.status === "Reading" ? "#6B9FD4" : "var(--mut)", marginTop: 1 }}>{b.status}</div></div>
+                    <div key={b.id} style={{ textAlign: "center", width: 52 }}>
+                      <Cover title={b.title} author={b.author} customCover={b.customcover} size={42} r={5} />
+                      <div style={{ fontSize: 8, color: "var(--sub)", marginTop: 3, lineHeight: 1.2, height: 18, overflow: "hidden" }}>{b.title.slice(0, 14)}</div>
+                      <div style={{ fontSize: 7, padding: "1px 4px", borderRadius: 6, background: b.status === "Finished" ? "rgba(111,175,123,.15)" : b.status === "Reading" ? "rgba(107,159,212,.15)" : "rgba(255,255,255,.04)", color: b.status === "Finished" ? "#6FAF7B" : b.status === "Reading" ? "#6B9FD4" : "var(--mut)", marginTop: 1 }}>{b.status}</div>
+                    </div>
                   ))}
                   {books.filter(b => b.memberid === viewMember.id).length === 0 && <Nil icon="📚" msg="No books yet" />}
                 </div>
@@ -1127,9 +1409,8 @@ export default function App() {
               <div><FL ch="Status" /><FS ch={["Not Started", "Reading", "Finished"].map(s => <option key={s}>{s}</option>)} value={bf.status} onChange={e => setBf(b => ({ ...b, status: e.target.value }))} /></div>
               <div><FL ch="Rating" /><div style={{ marginTop: 8 }}><Stars v={bf.rating} onChange={v => setBf(b => ({ ...b, rating: v }))} sz={22} /></div></div>
               <div style={{ gridColumn: "1/-1" }}><FL ch="Review / Notes" /><FT value={bf.review} onChange={e => setBf(b => ({ ...b, review: e.target.value }))} placeholder="Your thoughts..." /></div>
-              {/* Custom Cover Upload */}
               <div style={{ gridColumn: "1/-1" }}>
-                <FL ch="Custom Book Cover (optional — upload if auto cover is wrong)" />
+                <FL ch="Custom Book Cover (optional)" />
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   {bf.customCover && <img src={bf.customCover} alt="cover" style={{ width: 46, height: 66, objectFit: "cover", borderRadius: 6, border: "1px solid var(--bdr)" }} />}
                   <div style={{ flex: 1 }}>
@@ -1163,7 +1444,11 @@ export default function App() {
             <FL ch="Your Message *" /><FT value={newPost.body} onChange={e => setNewPost(p => ({ ...p, body: e.target.value }))} placeholder="Share your thoughts..." style={{ height: 120 }} />
             <div style={{ display: "flex", gap: 9, justifyContent: "flex-end", marginTop: 14 }}>
               <GB ch="Cancel" ghost onClick={() => { setShowNewPost(false); setNewPost({ title: "", body: "", bookTitle: "" }); }} />
-              <GB ch="Post Discussion 💬" onClick={() => { if (!newPost.title || !newPost.body) { showToast("Fill title and message", "error"); return; } const post = { id: "p" + Date.now(), authorId: user.id, title: newPost.title, body: newPost.body, bookTitle: newPost.bookTitle, date: new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }), replies: [] }; setForums(fs => [post, ...fs]); setShowNewPost(false); setNewPost({ title: "", body: "", bookTitle: "" }); showToast("Discussion posted! 💬"); }} />
+              <GB ch="Post Discussion 💬" onClick={() => {
+                if (!newPost.title || !newPost.body) { showToast("Fill title and message", "error"); return; }
+                const post = { id: "p" + Date.now(), authorId: user.id, title: newPost.title, body: newPost.body, bookTitle: newPost.bookTitle, date: new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }), replies: [] };
+                setForums(fs => [post, ...fs]); setShowNewPost(false); setNewPost({ title: "", body: "", bookTitle: "" }); showToast("Discussion posted! 💬");
+              }} />
             </div>
           </div>
         } onClose={() => setShowNewPost(false)} />
@@ -1179,7 +1464,11 @@ export default function App() {
             <FL ch="Your Note (optional)" /><FT value={recForm.note} onChange={e => setRecForm(r => ({ ...r, note: e.target.value }))} placeholder="Why are you recommending this book?" />
             <div style={{ display: "flex", gap: 9, justifyContent: "flex-end", marginTop: 14 }}>
               <GB ch="Cancel" ghost onClick={() => setShowRecommend(false)} />
-              <GB ch="Send Recommendation 📬" onClick={() => { if (!recForm.toMemberId || !recForm.bookTitle) { showToast("Select member and book title", "error"); return; } const rec = { fromMemberId: user.id, toMemberId: recForm.toMemberId, bookTitle: recForm.bookTitle, bookAuthor: recForm.bookAuthor, note: recForm.note, date: today() }; setRecommendations(rs => [...rs, rec]); setShowRecommend(false); setRecForm({ toMemberId: "", bookTitle: "", bookAuthor: "", note: "" }); showToast("Recommendation sent! 📬"); }} />
+              <GB ch="Send Recommendation 📬" onClick={() => {
+                if (!recForm.toMemberId || !recForm.bookTitle) { showToast("Select member and book title", "error"); return; }
+                const rec = { fromMemberId: user.id, toMemberId: recForm.toMemberId, bookTitle: recForm.bookTitle, bookAuthor: recForm.bookAuthor, note: recForm.note, date: today() };
+                setRecommendations(rs => [...rs, rec]); setShowRecommend(false); setRecForm({ toMemberId: "", bookTitle: "", bookAuthor: "", note: "" }); showToast("Recommendation sent! 📬");
+              }} />
             </div>
           </div>
         } onClose={() => setShowRecommend(false)} />
