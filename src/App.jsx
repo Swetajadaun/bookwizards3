@@ -4,19 +4,20 @@ import { useState, useEffect, useMemo, useCallback } from "react";
    📚 BOOK WIZARDS — v6 COMPLETE (FIXED)
    ═══════════════════════════════════════════════════════════════ */
 
-const SUPABASE_URL = "https://nnxbappmomgnxqjtwaya.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ueGJhcHBtb21nbnhxanR3YXlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjAzNzIsImV4cCI6MjA5Mjc5NjM3Mn0.xK3hK3_CETJQ-qpvzu3K3eYNf3An7LfayXjN27S2czM";
 
-// ── FIX: Define USE_SB so all conditional Supabase calls work ──
-const USE_SB = true;
+const SUPABASE_URL = "https://nnxbappmomgnxqjtwaya.supabase.co";   // e.g. https://xxxx.supabase.co
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ueGJhcHBtb21nbnhxanR3YXlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjAzNzIsImV4cCI6MjA5Mjc5NjM3Mn0.xK3hK3_CETJQ-qpvzu3K3eYNf3An7LfayXjN27S2czM"; // long ey... key
+
 
 // ── PASTE YOUR EMAILJS CREDENTIALS HERE ───────────────────────
 const EJS_SERVICE = "YOUR_EMAILJS_SERVICE_ID";
 const EJS_TEMPLATE = "YOUR_EMAILJS_TEMPLATE_ID";
 const EJS_KEY = "YOUR_EMAILJS_PUBLIC_KEY";
 
+
 // ── PASTE YOUR BOOK WIZARDS LOGO URL HERE ─────────────────────
-const LOGO = "/logo.png";
+const LOGO = "/logo.png"; // upload logo to imgur.com and paste link
+
 
 /* ─── SUPABASE ───────────────────────────────────────────────*/
 const SB = {
