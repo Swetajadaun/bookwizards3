@@ -4,66 +4,96 @@ import { useState, useEffect, useMemo, useCallback } from "react";
    📚 BOOK WIZARDS — v6 COMPLETE (FIXED)
    ═══════════════════════════════════════════════════════════════ */
 
+const SUPABASE_URL = "https://nnxbappmomgnxqjtwaya.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ueGJhcHBtb21nbnhxanR3YXlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjAzNzIsImV4cCI6MjA5Mjc5NjM3Mn0.xK3hK3_CETJQ-qpvzu3K3eYNf3An7LfayXjN27S2czM";
 
-const SUPABASE_URL = "https://nnxbappmomgnxqjtwaya.supabase.co";   // e.g. https://xxxx.supabase.co
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ueGJhcHBtb21nbnhxanR3YXlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjAzNzIsImV4cCI6MjA5Mjc5NjM3Mn0.xK3hK3_CETJQ-qpvzu3K3eYNf3An7LfayXjN27S2czM"; // long ey... key
-
+// ── FIX: Define USE_SB so all conditional Supabase calls work ──
+const USE_SB = true;
 
 // ── PASTE YOUR EMAILJS CREDENTIALS HERE ───────────────────────
 const EJS_SERVICE = "YOUR_EMAILJS_SERVICE_ID";
 const EJS_TEMPLATE = "YOUR_EMAILJS_TEMPLATE_ID";
 const EJS_KEY = "YOUR_EMAILJS_PUBLIC_KEY";
 
-
 // ── PASTE YOUR BOOK WIZARDS LOGO URL HERE ─────────────────────
-const LOGO = "/logo.png"; // upload logo to imgur.com and paste link
-
+const LOGO = "/logo.png";
 
 /* ─── SUPABASE ───────────────────────────────────────────────*/
+// BUG FIX: Added correct headers, retries, timeout, and localStorage cache fallback
+const SB_HEADERS = {
+  apikey: SUPABASE_KEY,
+  Authorization: `Bearer ${SUPABASE_KEY}`,
+  "Content-Type": "application/json",
+  Accept: "application/json",
+};
+
+async function sbFetch(url, options = {}, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout
+      const r = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeout);
+      if (!r.ok) {
+        const errText = await r.text();
+        console.warn(`Supabase ${options.method || "GET"} ${url} → ${r.status}:`, errText);
+        if (r.status === 401 || r.status === 403) break; // no point retrying auth errors
+        throw new Error(`HTTP ${r.status}`);
+      }
+      const text = await r.text();
+      return text ? JSON.parse(text) : null;
+    } catch (e) {
+      console.warn(`Supabase attempt ${i + 1}/${retries} failed:`, e.message);
+      if (i < retries - 1) await new Promise(res => setTimeout(res, 1200 * (i + 1)));
+    }
+  }
+  return null;
+}
+
 const SB = {
   async select(table) {
-    try {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, {
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-      });
-      const d = await r.json();
-      return Array.isArray(d) ? d : [];
-    } catch { return []; }
+    const data = await sbFetch(
+      `${SUPABASE_URL}/rest/v1/${table}?select=*&order=id.asc`,
+      { headers: SB_HEADERS }
+    );
+    if (Array.isArray(data)) {
+      // BUG FIX: cache successful fetches so app works even if next fetch fails
+      localStorage.setItem(`bw_sb_cache_${table}`, JSON.stringify(data));
+      return data;
+    }
+    // BUG FIX: fall back to cache instead of returning empty array
+    console.warn(`Using cached data for ${table}`);
+    const cached = localStorage.getItem(`bw_sb_cache_${table}`);
+    return cached ? JSON.parse(cached) : [];
   },
+
   async insert(table, row) {
-    try {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
-        method: "POST",
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
-        body: JSON.stringify(row)
-      });
-      return await r.json();
-    } catch { return null; }
+    const result = await sbFetch(
+      `${SUPABASE_URL}/rest/v1/${table}`,
+      { method: "POST", headers: { ...SB_HEADERS, Prefer: "return=representation" }, body: JSON.stringify(row) }
+    );
+    return result;
   },
+
   async update(table, row, id) {
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
-        method: "PATCH",
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify(row)
-      });
-    } catch { }
+    await sbFetch(
+      `${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`,
+      { method: "PATCH", headers: { ...SB_HEADERS, Prefer: "return=representation" }, body: JSON.stringify(row) }
+    );
   },
+
   async delete(table, id) {
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
-        method: "DELETE",
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-      });
-    } catch { }
+    await sbFetch(
+      `${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`,
+      { method: "DELETE", headers: SB_HEADERS }
+    );
   },
+
   async deleteWhere(table, col, val) {
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${val}`, {
-        method: "DELETE",
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-      });
-    } catch { }
+    await sbFetch(
+      `${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${encodeURIComponent(val)}`,
+      { method: "DELETE", headers: SB_HEADERS }
+    );
   }
 };
 
@@ -436,11 +466,36 @@ export default function App() {
   const goalPct = Math.min(100, Math.round((fin.length / target) * 100));
   const pagesRead = fin.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0);
 
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState(false);
+
+  // BUG FIX: loadData now sets loading/error states and updates the logged-in
+  // user's profile from Supabase so stale localStorage data never persists
   const loadData = useCallback(async () => {
     if (!USE_SB) return;
-    const [ms, bs] = await Promise.all([SB.select("members"), SB.select("books")]);
-    setMembers(ms);
-    setBooks(bs);
+    setDataLoading(true);
+    setDataError(false);
+    try {
+      const [ms, bs] = await Promise.all([SB.select("members"), SB.select("books")]);
+      setMembers(ms);
+      setBooks(bs);
+      // BUG FIX: keep logged-in user's profile in sync with Supabase
+      // so profile edits by admin or self on another device are reflected
+      const stored = localStorage.getItem("bw_user");
+      if (stored) {
+        const storedUser = JSON.parse(stored);
+        const fresh = ms.find(m => m.id === storedUser.id);
+        if (fresh) {
+          setUser(fresh);
+          localStorage.setItem("bw_user", JSON.stringify(fresh));
+        }
+      }
+    } catch (e) {
+      console.error("loadData failed:", e);
+      setDataError(true);
+    } finally {
+      setDataLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -464,18 +519,36 @@ export default function App() {
   const fmtTimer = s => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
   async function doLogin() {
+    // BUG FIX: NEVER read React state here — it's always stale on first render.
+    // Always fetch directly from Supabase and use the returned value immediately.
     setLoading(true); setLoginErr("");
-    // FIX: load fresh data before login so members list is up-to-date
-    let freshMembers = members;
-    if (USE_SB) {
-      freshMembers = await SB.select("members");
-      setMembers(freshMembers);
-      const freshBooks = await SB.select("books");
-      setBooks(freshBooks);
+    try {
+      let freshMembers = [];
+      let freshBooks = [];
+      if (USE_SB) {
+        [freshMembers, freshBooks] = await Promise.all([
+          SB.select("members"),
+          SB.select("books")
+        ]);
+        setMembers(freshMembers);
+        setBooks(freshBooks);
+      }
+      const email = loginEmail.toLowerCase().trim();
+      const found = freshMembers.find(m => (m.email || "").toLowerCase().trim() === email);
+      if (!found) {
+        setLoginErr("⚡ No wizard found with that email. Please register!");
+        setLoading(false);
+        return;
+      }
+      setUser(found);
+      localStorage.setItem("bw_user", JSON.stringify(found));
+      setScreen("app");
+    } catch (e) {
+      console.error("Login error:", e);
+      setLoginErr("⚡ Connection error. Please check your internet and try again.");
+    } finally {
+      setLoading(false);
     }
-    const found = freshMembers.find(m => (m.email || "").toLowerCase().trim() === loginEmail.toLowerCase().trim());
-    if (!found) { setLoginErr("⚡ No wizard found. Please register!"); setLoading(false); return; }
-    setUser(found); localStorage.setItem("bw_user", JSON.stringify(found)); setScreen("app"); setLoading(false);
   }
 
   async function doRegister() {
