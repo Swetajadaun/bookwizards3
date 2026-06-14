@@ -1,25 +1,20 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 
 /* ═══════════════════════════════════════════════════════════════
-   📚 BOOK WIZARDS — v6 COMPLETE (FIXED)
+   📚 BOOK WIZARDS — v7 (NO LOCALSTORAGE, QUOTA FIX)
    ═══════════════════════════════════════════════════════════════ */
 
 const SUPABASE_URL = "https://nnxbappmomgnxqjtwaya.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ueGJhcHBtb21nbnhxanR3YXlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjAzNzIsImV4cCI6MjA5Mjc5NjM3Mn0.xK3hK3_CETJQ-qpvzu3K3eYNf3An7LfayXjN27S2czM";
-
-// ── FIX: Define USE_SB so all conditional Supabase calls work ──
 const USE_SB = true;
 
-// ── PASTE YOUR EMAILJS CREDENTIALS HERE ───────────────────────
 const EJS_SERVICE = "YOUR_EMAILJS_SERVICE_ID";
 const EJS_TEMPLATE = "YOUR_EMAILJS_TEMPLATE_ID";
 const EJS_KEY = "YOUR_EMAILJS_PUBLIC_KEY";
 
-// ── PASTE YOUR BOOK WIZARDS LOGO URL HERE ─────────────────────
 const LOGO = "/logo.png";
 
 /* ─── SUPABASE ───────────────────────────────────────────────*/
-// BUG FIX: Added correct headers, retries, timeout, and localStorage cache fallback
 const SB_HEADERS = {
   apikey: SUPABASE_KEY,
   Authorization: `Bearer ${SUPABASE_KEY}`,
@@ -31,13 +26,13 @@ async function sbFetch(url, options = {}, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout
+      const timeout = setTimeout(() => controller.abort(), 10000);
       const r = await fetch(url, { ...options, signal: controller.signal });
       clearTimeout(timeout);
       if (!r.ok) {
         const errText = await r.text();
         console.warn(`Supabase ${options.method || "GET"} ${url} → ${r.status}:`, errText);
-        if (r.status === 401 || r.status === 403) break; // no point retrying auth errors
+        if (r.status === 401 || r.status === 403) break;
         throw new Error(`HTTP ${r.status}`);
       }
       const text = await r.text();
@@ -56,39 +51,27 @@ const SB = {
       `${SUPABASE_URL}/rest/v1/${table}?select=*&order=id.asc`,
       { headers: SB_HEADERS }
     );
-    if (Array.isArray(data)) {
-      // BUG FIX: cache successful fetches so app works even if next fetch fails
-      localStorage.setItem(`bw_sb_cache_${table}`, JSON.stringify(data));
-      return data;
-    }
-    // BUG FIX: fall back to cache instead of returning empty array
-    console.warn(`Using cached data for ${table}`);
-    const cached = localStorage.getItem(`bw_sb_cache_${table}`);
-    return cached ? JSON.parse(cached) : [];
+    // Return data if valid array, else empty array — NO localStorage caching
+    return Array.isArray(data) ? data : [];
   },
-
   async insert(table, row) {
-    const result = await sbFetch(
+    return await sbFetch(
       `${SUPABASE_URL}/rest/v1/${table}`,
       { method: "POST", headers: { ...SB_HEADERS, Prefer: "return=representation" }, body: JSON.stringify(row) }
     );
-    return result;
   },
-
   async update(table, row, id) {
     await sbFetch(
       `${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`,
       { method: "PATCH", headers: { ...SB_HEADERS, Prefer: "return=representation" }, body: JSON.stringify(row) }
     );
   },
-
   async delete(table, id) {
     await sbFetch(
       `${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`,
       { method: "DELETE", headers: SB_HEADERS }
     );
   },
-
   async deleteWhere(table, col, val) {
     await sbFetch(
       `${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${encodeURIComponent(val)}`,
@@ -163,7 +146,6 @@ const QUOTES = [
   { q: "Not all those who wander are lost.", a: "J.R.R. Tolkien" },
   { q: "So many books, so little time.", a: "Frank Zappa" }
 ];
-
 const CHALLENGES = [
   { id: "c1", title: "Read an Indian Author", desc: "Read any book written by an Indian author", emoji: "🇮🇳", points: 50 },
   { id: "c2", title: "Historical Journey", desc: "Read a historical fiction or history book", emoji: "🏛️", points: 40 },
@@ -183,7 +165,7 @@ const nextId = ms => { const n = ms.map(m => parseInt((m.id || "BW000").replace(
 const rand = arr => arr[Math.floor(Math.random() * arr.length)];
 const today = () => new Date().toISOString().slice(0, 10);
 
-/* ─── COVER CACHE ────────────────────────────────────────────*/
+/* ─── COVER CACHE (memory only, no localStorage) ─────────────*/
 const coverCache = {};
 function Cover({ title, author, customCover, size = 80, r = 8 }) {
   const [src, setSrc] = useState(customCover || null);
@@ -230,13 +212,11 @@ function Cover({ title, author, customCover, size = 80, r = 8 }) {
   );
 }
 
-/* ─── AVATAR ─────────────────────────────────────────────────*/
 function Av({ m, size = 36 }) {
   if (m?.photo) return <img src={m.photo} alt={m?.name} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", border: "2px solid #C9A84C", flexShrink: 0 }} />;
   return <div style={{ width: size, height: size, borderRadius: "50%", background: abg(m?.name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * .36, fontWeight: 700, color: "#fff", flexShrink: 0, border: "2px solid rgba(201,168,76,.4)" }}>{ini(m?.name)}</div>;
 }
 
-/* ─── PARTICLES ──────────────────────────────────────────────*/
 function Particles() {
   const ps = Array.from({ length: 12 }, (_, i) => ({ id: i, x: Math.random() * 100, d: 2.5 + Math.random() * 4, dl: Math.random() * 5, e: ["✨", "⭐", "💫", "⚡", "🌟"][i % 5] }));
   return (
@@ -253,7 +233,6 @@ function Particles() {
   );
 }
 
-/* ─── UI COMPONENTS ──────────────────────────────────────────*/
 function PBar({ p = 0, c = "#C9A84C", h = 7 }) {
   return <div style={{ height: h, background: "rgba(255,255,255,.07)", borderRadius: h, overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.min(100, Math.max(0, p))}%`, background: c, borderRadius: h, transition: "width .7s ease" }} /></div>;
 }
@@ -363,7 +342,6 @@ function Confirm({ msg, onYes, onNo }) {
   );
 }
 
-/* ─── SPLASH ─────────────────────────────────────────────────*/
 function Splash({ onDone }) {
   const [p, setP] = useState(0);
   const q = rand(QUOTES);
@@ -399,10 +377,11 @@ function Splash({ onDone }) {
    MAIN APP
 ═══════════════════════════════════════════════════════════ */
 export default function App() {
-  const [splash, setSplash] = useState(() => !localStorage.getItem("bw_user"));
-  const [screen, setScreen] = useState(() => localStorage.getItem("bw_user") ? "app" : "login");
+  // ── NO localStorage at all — everything in React state ──
+  const [splash, setSplash] = useState(true);
+  const [screen, setScreen] = useState("login");
   const [page, setPage] = useState("dashboard");
-  const [user, setUser] = useState(() => { try { const s = localStorage.getItem("bw_user"); return s ? JSON.parse(s) : null; } catch { return null; } });
+  const [user, setUser] = useState(null);
   const [members, setMembers] = useState([]);
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -423,32 +402,23 @@ export default function App() {
   const [loginErr, setLoginErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState({ msg: "", type: "success" });
+  const [dataLoading, setDataLoading] = useState(false);
 
-  // Forum
-  const [forums, setForums] = useState(() => { try { return JSON.parse(localStorage.getItem("bw_forums") || "[]"); } catch { return []; } });
+  // In-memory only (no localStorage)
+  const [forums, setForums] = useState([]);
   const [showNewPost, setShowNewPost] = useState(false);
   const [newPost, setNewPost] = useState({ title: "", body: "", bookTitle: "" });
   const [openPost, setOpenPost] = useState(null);
   const [newReply, setNewReply] = useState("");
-
-  // Streak
-  const [streakData, setStreakData] = useState(() => { try { return JSON.parse(localStorage.getItem("bw_streak") || "{}"); } catch { return {}; } });
-
-  // Timer
+  const [streakData, setStreakData] = useState({});
   const [timerRunning, setTimerRunning] = useState(false);
   const [timerSecs, setTimerSecs] = useState(0);
   const [timerBook, setTimerBook] = useState("");
-
-  // Challenges
-  const [completedChallenges, setCompletedChallenges] = useState(() => { try { return JSON.parse(localStorage.getItem("bw_challenges") || "[]"); } catch { return []; } });
-
-  // Book of Month
-  const [botm, setBotm] = useState(() => { try { return JSON.parse(localStorage.getItem("bw_botm") || "null"); } catch { return null; } });
-
-  // Recommend
+  const [completedChallenges, setCompletedChallenges] = useState([]);
+  const [botm, setBotm] = useState(null);
   const [showRecommend, setShowRecommend] = useState(false);
   const [recForm, setRecForm] = useState({ toMemberId: "", bookTitle: "", bookAuthor: "", note: "" });
-  const [recommendations, setRecommendations] = useState(() => { try { return JSON.parse(localStorage.getItem("bw_recs") || "[]"); } catch { return []; } });
+  const [recommendations, setRecommendations] = useState([]);
 
   const eReg = { name: "", email: "", phone: "", birthdayMonth: "January", birthdayDate: "", state: "", city: "", country: "India", postalAddress: "", instagramLink: "", goodreadsLink: "", bio: "", photo: "" };
   const [reg, setReg] = useState(eReg);
@@ -466,73 +436,46 @@ export default function App() {
   const goalPct = Math.min(100, Math.round((fin.length / target) * 100));
   const pagesRead = fin.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0);
 
-  const [dataLoading, setDataLoading] = useState(false);
-  const [dataError, setDataError] = useState(false);
-
-  // BUG FIX: loadData now sets loading/error states and updates the logged-in
-  // user's profile from Supabase so stale localStorage data never persists
   const loadData = useCallback(async () => {
     if (!USE_SB) return;
     setDataLoading(true);
-    setDataError(false);
     try {
       const [ms, bs] = await Promise.all([SB.select("members"), SB.select("books")]);
       setMembers(ms);
       setBooks(bs);
-      // BUG FIX: keep logged-in user's profile in sync with Supabase
-      // so profile edits by admin or self on another device are reflected
-      const stored = localStorage.getItem("bw_user");
-      if (stored) {
-        const storedUser = JSON.parse(stored);
-        const fresh = ms.find(m => m.id === storedUser.id);
-        if (fresh) {
-          setUser(fresh);
-          localStorage.setItem("bw_user", JSON.stringify(fresh));
-        }
+      // Refresh logged-in user's data from fresh Supabase fetch
+      if (user) {
+        const fresh = ms.find(m => m.id === user.id);
+        if (fresh) setUser(fresh);
       }
     } catch (e) {
       console.error("loadData failed:", e);
-      setDataError(true);
     } finally {
       setDataLoading(false);
     }
-  }, []);
+  }, [user]);
 
-  useEffect(() => { loadData(); }, [loadData]);
-  useEffect(() => { if (user) localStorage.setItem("bw_user", JSON.stringify(user)); else localStorage.removeItem("bw_user"); }, [user]);
+  useEffect(() => { loadData(); }, []); // Load on mount only
 
-  // Timer effect
   useEffect(() => {
     let interval;
     if (timerRunning) { interval = setInterval(() => setTimerSecs(s => s + 1), 1000); }
     return () => clearInterval(interval);
   }, [timerRunning]);
 
-  // Persist to localStorage
-  useEffect(() => { localStorage.setItem("bw_forums", JSON.stringify(forums)); }, [forums]);
-  useEffect(() => { localStorage.setItem("bw_streak", JSON.stringify(streakData)); }, [streakData]);
-  useEffect(() => { localStorage.setItem("bw_challenges", JSON.stringify(completedChallenges)); }, [completedChallenges]);
-  useEffect(() => { localStorage.setItem("bw_recs", JSON.stringify(recommendations)); }, [recommendations]);
-
   function showToast(msg, type = "success") { setToast({ msg, type }); setTimeout(() => setToast({ msg: "", type: "success" }), 3000); }
   function handlePhoto(e, cb) { const f = e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = ev => cb(ev.target.result); rd.readAsDataURL(f); }
   const fmtTimer = s => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
   async function doLogin() {
-    // BUG FIX: NEVER read React state here — it's always stale on first render.
-    // Always fetch directly from Supabase and use the returned value immediately.
     setLoading(true); setLoginErr("");
     try {
-      let freshMembers = [];
-      let freshBooks = [];
-      if (USE_SB) {
-        [freshMembers, freshBooks] = await Promise.all([
-          SB.select("members"),
-          SB.select("books")
-        ]);
-        setMembers(freshMembers);
-        setBooks(freshBooks);
-      }
+      const [freshMembers, freshBooks] = await Promise.all([
+        SB.select("members"),
+        SB.select("books")
+      ]);
+      setMembers(freshMembers);
+      setBooks(freshBooks);
       const email = loginEmail.toLowerCase().trim();
       const found = freshMembers.find(m => (m.email || "").toLowerCase().trim() === email);
       if (!found) {
@@ -541,7 +484,6 @@ export default function App() {
         return;
       }
       setUser(found);
-      localStorage.setItem("bw_user", JSON.stringify(found));
       setScreen("app");
     } catch (e) {
       console.error("Login error:", e);
@@ -611,14 +553,14 @@ export default function App() {
     const updated = { ...user, yearlytarget: parseInt(goalVal) || 12 };
     if (USE_SB) { await SB.update("members", { yearlytarget: updated.yearlytarget }, user.id); await loadData(); }
     else setMembers(ms => ms.map(m => m.id === user.id ? updated : m));
-    setUser(updated); localStorage.setItem("bw_user", JSON.stringify(updated)); setShowGoal(false); showToast("Reading goal updated! 🎯");
+    setUser(updated); setShowGoal(false); showToast("Reading goal updated! 🎯");
   }
 
   async function saveProfile() {
     const updated = { ...user, ...pe };
     if (USE_SB) { await SB.update("members", pe, user.id); await loadData(); }
     else setMembers(ms => ms.map(m => m.id === user.id ? updated : m));
-    setUser(updated); localStorage.setItem("bw_user", JSON.stringify(updated)); setShowProfEdit(false); showToast("Profile saved! ✨");
+    setUser(updated); setShowProfEdit(false); showToast("Profile saved! ✨");
   }
 
   async function doDelete() {
@@ -630,13 +572,12 @@ export default function App() {
     if (type === "member") {
       if (USE_SB) { await SB.deleteWhere("books", "memberid", id); await SB.delete("members", id); await loadData(); }
       else { setBooks(bs => bs.filter(b => b.memberid !== id)); setMembers(ms => ms.filter(m => m.id !== id)); }
-      if (id === user.id) { setUser(null); localStorage.removeItem("bw_user"); setScreen("login"); }
+      if (id === user.id) { setUser(null); setScreen("login"); }
     }
     if (USE_SB) await loadData();
     setConfirmDel(null); showToast("Deleted successfully", "error");
   }
 
-  // Monthly stats
   const mFin = books.filter(b => b.status === "Finished" && b.endmonth === selMonth);
   const mPages = mFin.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0);
   const gCounts = mFin.reduce((a, b) => { a[b.genre] = (a[b.genre] || 0) + 1; return a; }, {});
@@ -658,7 +599,6 @@ export default function App() {
     return { ...m, bR: mf.length, pR: mf.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0) };
   }).sort((a, b) => b.bR - a.bR);
 
-  // Upcoming birthdays
   const upcomingBirthdays = members.filter(m => {
     if (!m.birthdaymonth || !m.birthdaydate) return false;
     const now = new Date();
@@ -788,7 +728,6 @@ export default function App() {
     </div>
   );
 
-  /* ════ MAIN APP ════════════════════════════════════════════ */
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg)" }}>
       <style>{css}</style>
@@ -824,7 +763,7 @@ export default function App() {
             <Av m={user} size={32} />
             {sideOpen && <div style={{ overflow: "hidden", flex: 1 }}><div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontFamily: "'Cinzel',serif" }}>{user.name.split(" ")[0]}</div><div style={{ fontSize: 9, color: "#C9A84C" }}>{user.id} · tap to edit</div></div>}
           </div>
-          {sideOpen && <button style={{ marginTop: 7, width: "100%", padding: "6px", background: "transparent", border: "1px solid var(--bdr)", borderRadius: 8, color: "var(--sub)", fontSize: 11, cursor: "pointer" }} onClick={() => { setUser(null); localStorage.removeItem("bw_user"); setScreen("login"); }}>Sign Out 🌀</button>}
+          {sideOpen && <button style={{ marginTop: 7, width: "100%", padding: "6px", background: "transparent", border: "1px solid var(--bdr)", borderRadius: 8, color: "var(--sub)", fontSize: 11, cursor: "pointer" }} onClick={() => { setUser(null); setScreen("login"); }}>Sign Out 🌀</button>}
         </div>
       </div>
 
@@ -888,7 +827,7 @@ export default function App() {
                 </div>
               </div>
               <div style={{ ...card, padding: 18 }}>
-                <SH ch="📖 Book of the Month" action={user?.isadmin && <GB ch="Set" sm ghost onClick={() => { const t = prompt("Enter Book Title for Book of the Month:"); if (t) { const nb = { title: t, setBy: user.name, month: MONTHS[new Date().getMonth()] }; setBotm(nb); localStorage.setItem("bw_botm", JSON.stringify(nb)); showToast("Book of the Month set! 📖"); } }} />} />
+                <SH ch="📖 Book of the Month" action={user?.isadmin && <GB ch="Set" sm ghost onClick={() => { const t = prompt("Enter Book Title for Book of the Month:"); if (t) { const nb = { title: t, setBy: user.name, month: MONTHS[new Date().getMonth()] }; setBotm(nb); showToast("Book of the Month set! 📖"); } }} />} />
                 {botm ? (
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                     <Cover title={botm.title} size={60} r={8} />
@@ -1371,9 +1310,8 @@ export default function App() {
 
       </div>
 
-      {/* ══ MODALS ══════════════════════════════════════════════ */}
+      {/* ══ MODALS ══ */}
 
-      {/* View Member */}
       {viewMember && (
         <Modal title={`🧙 ${viewMember.name}`} ch={
           <div>
@@ -1410,7 +1348,6 @@ export default function App() {
         } onClose={() => setViewMember(null)} wide />
       )}
 
-      {/* Goal Modal */}
       {showGoal && (
         <Modal title="🎯 Set 2026 Reading Goal" ch={
           <div>
@@ -1424,7 +1361,6 @@ export default function App() {
         } onClose={() => setShowGoal(false)} />
       )}
 
-      {/* Profile Edit Modal */}
       {showProfEdit && (
         <Modal title="✏️ Edit My Profile" ch={
           <div>
@@ -1466,7 +1402,6 @@ export default function App() {
         } onClose={() => setShowProfEdit(false)} wide />
       )}
 
-      {/* Add/Edit Book Modal */}
       {showBookMod && (
         <Modal title={editBook ? "✏️ Edit Book" : "✨ Add Book"} ch={
           <div>
@@ -1509,7 +1444,6 @@ export default function App() {
         } onClose={() => { setShowBookMod(false); setEditBook(null); }} wide />
       )}
 
-      {/* New Forum Post */}
       {showNewPost && (
         <Modal title="💬 Start a Discussion" ch={
           <div>
@@ -1528,7 +1462,6 @@ export default function App() {
         } onClose={() => setShowNewPost(false)} />
       )}
 
-      {/* Recommend Book Modal */}
       {showRecommend && (
         <Modal title="📬 Recommend a Book" ch={
           <div>
@@ -1548,10 +1481,8 @@ export default function App() {
         } onClose={() => setShowRecommend(false)} />
       )}
 
-      {/* Confirm Delete */}
       {confirmDel && <Confirm msg={`Are you sure you want to delete "${confirmDel.name}"?${confirmDel.type === "member" ? " This will also delete all their books." : ""}`} onYes={doDelete} onNo={() => setConfirmDel(null)} />}
 
-      {/* Toast */}
       {toast.msg && (
         <div style={{ position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)", background: toast.type === "success" ? "rgba(26,58,26,.97)" : "rgba(58,26,26,.97)", border: `1px solid ${toast.type === "success" ? "#6FAF7B" : "#E07070"}`, borderRadius: 12, padding: "12px 24px", zIndex: 9999, display: "flex", alignItems: "center", gap: 10, boxShadow: "0 8px 32px rgba(0,0,0,.6)", fontFamily: "'Cinzel',serif", fontSize: 13, color: toast.type === "success" ? "#6FAF7B" : "#E07070", whiteSpace: "nowrap", animation: "fiu .3s ease" }}>
           <span>{toast.type === "success" ? "✅" : "❌"}</span>{toast.msg}
