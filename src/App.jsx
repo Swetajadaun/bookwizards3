@@ -22,37 +22,43 @@ const SB_HEADERS = {
   Accept: "application/json",
 };
 
-async function sbFetch(url, options = {}, retries = 3) {
+// Returns { ok:true, data } on success or { ok:false, error } on failure.
+// Failures are NEVER swallowed — every caller can see exactly what happened.
+async function sbFetch(url, options = {}, retries = 2) {
+  let lastErr = "Unknown error";
   for (let i = 0; i < retries; i++) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
+      const timeout = setTimeout(() => controller.abort(), 8000);
       const r = await fetch(url, { ...options, signal: controller.signal });
       clearTimeout(timeout);
       if (!r.ok) {
-        const errText = await r.text();
+        const errText = await r.text().catch(() => "");
         console.warn(`Supabase ${options.method || "GET"} ${url} → ${r.status}:`, errText);
-        if (r.status === 401 || r.status === 403) break;
-        throw new Error(`HTTP ${r.status}`);
+        lastErr = `${r.status}${errText ? ": " + errText.slice(0, 160) : ""}`;
+        if (r.status === 401 || r.status === 403) break; // auth issue, no point retrying
+        if (i < retries - 1) { await new Promise(res => setTimeout(res, 700 * (i + 1))); continue; }
+        break;
       }
       const text = await r.text();
-      return text ? JSON.parse(text) : null;
+      return { ok: true, data: text ? JSON.parse(text) : null };
     } catch (e) {
-      console.warn(`Supabase attempt ${i + 1}/${retries} failed:`, e.message);
-      if (i < retries - 1) await new Promise(res => setTimeout(res, 1200 * (i + 1)));
+      lastErr = e.name === "AbortError" ? "Request timed out" : e.message;
+      console.warn(`Supabase attempt ${i + 1}/${retries} failed:`, lastErr);
+      if (i < retries - 1) await new Promise(res => setTimeout(res, 700 * (i + 1)));
     }
   }
-  return null;
+  return { ok: false, error: lastErr };
 }
 
 const SB = {
   async select(table) {
-    const data = await sbFetch(
+    const res = await sbFetch(
       `${SUPABASE_URL}/rest/v1/${table}?select=*&order=id.asc`,
       { headers: SB_HEADERS }
     );
     // Return data if valid array, else empty array — NO localStorage caching
-    return Array.isArray(data) ? data : [];
+    return res.ok && Array.isArray(res.data) ? res.data : [];
   },
   async insert(table, row) {
     return await sbFetch(
@@ -61,19 +67,19 @@ const SB = {
     );
   },
   async update(table, row, id) {
-    await sbFetch(
+    return await sbFetch(
       `${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`,
       { method: "PATCH", headers: { ...SB_HEADERS, Prefer: "return=representation" }, body: JSON.stringify(row) }
     );
   },
   async delete(table, id) {
-    await sbFetch(
+    return await sbFetch(
       `${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`,
       { method: "DELETE", headers: SB_HEADERS }
     );
   },
   async deleteWhere(table, col, val) {
-    await sbFetch(
+    return await sbFetch(
       `${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${encodeURIComponent(val)}`,
       { method: "DELETE", headers: SB_HEADERS }
     );
@@ -156,6 +162,21 @@ const CHALLENGES = [
   { id: "c7", title: "Marathon Reader", desc: "Read a book with 500+ pages", emoji: "🏃", points: 80 },
   { id: "c8", title: "Multilingual", desc: "Read a book in a language other than English", emoji: "🌍", points: 90 },
 ];
+const YEAR = 2026;
+const DEFAULT_THEMES = {
+  January: { emoji: "❄️", title: "Fresh Starts", desc: "New year, new chapters — hopeful, inspiring reads to kick things off." },
+  February: { emoji: "💕", title: "Love & Relationships", desc: "Romance, friendship, and stories of the heart." },
+  March: { emoji: "🌸", title: "Women's Voices", desc: "Celebrate books written by women, about women." },
+  April: { emoji: "🌧️", title: "Mystery & Thrillers", desc: "April showers bring page-turning suspense." },
+  May: { emoji: "🌷", title: "Growth & Self-Help", desc: "Bloom with books on personal growth and habits." },
+  June: { emoji: "☀️", title: "Summer Fiction", desc: "Light, breezy reads for long sunny days." },
+  July: { emoji: "🗺️", title: "Travel & Adventure", desc: "Explore the world through story." },
+  August: { emoji: "🔬", title: "Science & Non-Fiction", desc: "Feed your curiosity with facts and ideas." },
+  September: { emoji: "📜", title: "Classics", desc: "Back to school, back to the classics." },
+  October: { emoji: "🎃", title: "Mystery & Horror", desc: "Spooky season calls for a chill down the spine." },
+  November: { emoji: "🙏", title: "Memoirs & Gratitude", desc: "Reflect with memoirs, biographies, and true stories." },
+  December: { emoji: "🎄", title: "Mythology & Fantasy", desc: "End the year with magic, myth and wonder." },
+};
 
 /* ─── UTILS ──────────────────────────────────────────────────*/
 const abg = n => ["#7B2D2D", "#1A472A", "#0E1A40", "#5C2D91", "#B8540A", "#1565C0", "#2E7D32", "#6D2D92"][(n?.charCodeAt(0) || 0) % 8];
@@ -304,6 +325,50 @@ function Donut({ slices, sz = 110 }) {
   );
 }
 
+function MonthCalendar({ month, year, members, books }) {
+  const monthIdx = MONTHS.indexOf(month);
+  const firstDow = new Date(year, monthIdx, 1).getDay();
+  const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+  const realToday = new Date();
+  const isCurMonth = realToday.getMonth() === monthIdx && realToday.getFullYear() === year;
+  const todayNum = realToday.getDate();
+
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  function eventsFor(d) {
+    const bdays = members.filter(m => m.birthdaymonth === month && parseInt(m.birthdaydate) === d);
+    const finished = books.filter(b => b.status === "Finished" && b.endmonth === month && b.enddate && new Date(b.enddate).getDate() === d && new Date(b.enddate).getFullYear() === year);
+    return { bdays, finished };
+  }
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 6 }}>
+        {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: 10, color: "var(--mut)", fontFamily: "'Cinzel',serif" }}>{d}</div>)}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4 }}>
+        {cells.map((d, i) => {
+          if (!d) return <div key={i} />;
+          const { bdays, finished } = eventsFor(d);
+          const isToday = isCurMonth && d === todayNum;
+          return (
+            <div key={i} title={bdays.map(m => `🎂 ${m.name}`).concat(finished.length ? [`📚 ${finished.length} finished`] : []).join(" · ")}
+              style={{ minHeight: 54, borderRadius: 8, padding: 4, border: isToday ? "1.5px solid #C9A84C" : "1px solid var(--bdr)", background: isToday ? "rgba(201,168,76,.12)" : "var(--card2)", position: "relative" }}>
+              <div style={{ fontSize: 11, fontWeight: isToday ? 700 : 400, color: isToday ? "#C9A84C" : "var(--sub)" }}>{d}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 2, marginTop: 3 }}>
+                {bdays.slice(0, 3).map(m => <span key={m.id} style={{ fontSize: 10 }}>🎂</span>)}
+                {finished.length > 0 && <span style={{ fontSize: 9, padding: "0 4px", borderRadius: 6, background: "rgba(107,159,212,.18)", color: "#6B9FD4" }}>📚{finished.length}</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const IS = { width: "100%", padding: "10px 13px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(201,168,76,.18)", borderRadius: 9, color: "#EDE8DF", fontSize: 13, marginBottom: 12, fontFamily: "inherit", outline: "none", transition: "border-color .2s" };
 const onF = e => e.target.style.borderColor = "rgba(201,168,76,.65)";
 const onB = e => e.target.style.borderColor = "rgba(201,168,76,.18)";
@@ -419,6 +484,10 @@ export default function App() {
   const [showRecommend, setShowRecommend] = useState(false);
   const [recForm, setRecForm] = useState({ toMemberId: "", bookTitle: "", bookAuthor: "", note: "" });
   const [recommendations, setRecommendations] = useState([]);
+  const [monthlyThemes, setMonthlyThemes] = useState(DEFAULT_THEMES);
+  const [showThemeEdit, setShowThemeEdit] = useState(false);
+  const [themeForm, setThemeForm] = useState({ emoji: "", title: "", desc: "" });
+  const [shelfSearch, setShelfSearch] = useState("");
 
   const eReg = { name: "", email: "", phone: "", birthdayMonth: "January", birthdayDate: "", state: "", city: "", country: "India", postalAddress: "", instagramLink: "", goodreadsLink: "", bio: "", photo: "" };
   const [reg, setReg] = useState(eReg);
@@ -519,62 +588,94 @@ export default function App() {
     if (!bf.title) { showToast("Please enter a book title!", "error"); return; }
     if (saving) return;
     setSaving(true);
+    const tp = parseInt(bf.totalPages) || 0;
+    const fp = parseInt(bf.finishedPages) || 0;
+    const pct = tp > 0 ? Math.min(100, Math.round((fp / tp) * 100)) : 0;
+    const wasEdit = !!editBook;
+    const bk = {
+      id: editBook ? editBook.id : "b" + Date.now(),
+      memberid: user.id, membername: user.name,
+      title: bf.title, author: bf.author, genre: bf.genre,
+      origlang: bf.origLang, readlang: bf.readLang,
+      startdate: bf.startDate, startmonth: bf.startDate ? MONTHS[new Date(bf.startDate).getMonth()] : "",
+      enddate: bf.endDate, endmonth: bf.endDate ? MONTHS[new Date(bf.endDate).getMonth()] : "",
+      totalpages: tp, finishedpages: fp, pct,
+      status: bf.status, rating: bf.rating, review: bf.review,
+      customcover: bf.customCover || ""
+    };
+
+    // Optimistic local update — the shelf reflects the change instantly,
+    // instead of waiting on the network before showing anything.
+    const prevBooks = books;
+    setBooks(bs => wasEdit ? bs.map(b => (b.id === bk.id ? bk : b)) : [...bs, bk]);
+
     try {
-      const tp = parseInt(bf.totalPages) || 0;
-      const fp = parseInt(bf.finishedPages) || 0;
-      const pct = tp > 0 ? Math.round((fp / tp) * 100) : 0;
-      const bk = {
-        id: editBook ? editBook.id : "b" + Date.now(),
-        memberid: user.id, membername: user.name,
-        title: bf.title, author: bf.author, genre: bf.genre,
-        origlang: bf.origLang, readlang: bf.readLang,
-        startdate: bf.startDate, startmonth: bf.startDate ? MONTHS[new Date(bf.startDate).getMonth()] : "",
-        enddate: bf.endDate, endmonth: bf.endDate ? MONTHS[new Date(bf.endDate).getMonth()] : "",
-        totalpages: tp, finishedpages: fp, pct,
-        status: bf.status, rating: bf.rating, review: bf.review,
-        customcover: bf.customCover || ""
-      };
       if (USE_SB) {
-        if (editBook) await SB.update("books", bk, bk.id);
-        else await SB.insert("books", bk);
-        await loadData();
-      } else {
-        if (editBook) setBooks(bs => bs.map(b => b.id === editBook.id ? bk : b));
-        else setBooks(bs => [...bs, bk]);
+        const res = wasEdit ? await SB.update("books", bk, bk.id) : await SB.insert("books", bk);
+        if (!res.ok) {
+          setBooks(prevBooks); // roll back — it did NOT actually save
+          showToast(`Save failed — ${res.error}. Nothing was saved, please retry.`, "error");
+          setSaving(false);
+          return;
+        }
+        // Refresh from the server in the background; don't make the user wait for it.
+        loadData();
       }
-      const wasEdit = !!editBook;
       setShowBookMod(false); setEditBook(null); setBf(eBook);
       showToast(wasEdit ? "Book updated! 📚" : "Book added to your shelf! ✨");
-    } catch { showToast("Something went wrong. Try again.", "error"); }
-    finally { setSaving(false); }
+    } catch (e) {
+      setBooks(prevBooks);
+      showToast(`Save failed — ${e.message}. Please retry.`, "error");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function saveGoal() {
     const updated = { ...user, yearlytarget: parseInt(goalVal) || 12 };
-    if (USE_SB) { await SB.update("members", { yearlytarget: updated.yearlytarget }, user.id); await loadData(); }
-    else setMembers(ms => ms.map(m => m.id === user.id ? updated : m));
-    setUser(updated); setShowGoal(false); showToast("Reading goal updated! 🎯");
+    const prevUser = user, prevMembers = members;
+    setUser(updated); setMembers(ms => ms.map(m => m.id === user.id ? updated : m));
+    if (USE_SB) {
+      const res = await SB.update("members", { yearlytarget: updated.yearlytarget }, user.id);
+      if (!res.ok) { setUser(prevUser); setMembers(prevMembers); showToast(`Save failed — ${res.error}`, "error"); return; }
+      loadData();
+    }
+    setShowGoal(false); showToast("Reading goal updated! 🎯");
   }
 
   async function saveProfile() {
     const updated = { ...user, ...pe };
-    if (USE_SB) { await SB.update("members", pe, user.id); await loadData(); }
-    else setMembers(ms => ms.map(m => m.id === user.id ? updated : m));
-    setUser(updated); setShowProfEdit(false); showToast("Profile saved! ✨");
+    const prevUser = user, prevMembers = members;
+    setUser(updated); setMembers(ms => ms.map(m => m.id === user.id ? updated : m));
+    if (USE_SB) {
+      const res = await SB.update("members", pe, user.id);
+      if (!res.ok) { setUser(prevUser); setMembers(prevMembers); showToast(`Save failed — ${res.error}`, "error"); return; }
+      loadData();
+    }
+    setShowProfEdit(false); showToast("Profile saved! ✨");
   }
 
   async function doDelete() {
     const { type, id } = confirmDel;
+    const prevBooks = books, prevMembers = members;
     if (type === "book") {
-      if (USE_SB) await SB.delete("books", id);
-      else setBooks(bs => bs.filter(b => b.id !== id));
+      setBooks(bs => bs.filter(b => b.id !== id));
+      if (USE_SB) {
+        const res = await SB.delete("books", id);
+        if (!res.ok) { setBooks(prevBooks); showToast(`Delete failed — ${res.error}`, "error"); setConfirmDel(null); return; }
+      }
     }
     if (type === "member") {
-      if (USE_SB) { await SB.deleteWhere("books", "memberid", id); await SB.delete("members", id); await loadData(); }
-      else { setBooks(bs => bs.filter(b => b.memberid !== id)); setMembers(ms => ms.filter(m => m.id !== id)); }
+      setBooks(bs => bs.filter(b => b.memberid !== id));
+      setMembers(ms => ms.filter(m => m.id !== id));
+      if (USE_SB) {
+        const r1 = await SB.deleteWhere("books", "memberid", id);
+        const r2 = await SB.delete("members", id);
+        if (!r1.ok || !r2.ok) { setBooks(prevBooks); setMembers(prevMembers); showToast(`Delete failed — ${r1.error || r2.error}`, "error"); setConfirmDel(null); return; }
+      }
       if (id === user.id) { setUser(null); setScreen("login"); }
     }
-    if (USE_SB) await loadData();
+    if (USE_SB) loadData();
     setConfirmDel(null); showToast("Deleted successfully", "error");
   }
 
@@ -615,6 +716,15 @@ export default function App() {
     return d1 - d2;
   });
 
+  const realToday = new Date();
+  const todayMonthName = MONTHS[realToday.getMonth()];
+  const todayDateNum = realToday.getDate();
+  const todayISO = today();
+  const birthdaysToday = members.filter(m => m.birthdaymonth === todayMonthName && parseInt(m.birthdaydate) === todayDateNum);
+  const booksFinishedToday = books.filter(b => b.status === "Finished" && b.enddate === todayISO);
+  const quoteOfDay = QUOTES[realToday.getDate() % QUOTES.length];
+  const currentTheme = monthlyThemes[selMonth] || DEFAULT_THEMES[selMonth];
+
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap');
     *{box-sizing:border-box;margin:0;padding:0;}
@@ -630,6 +740,7 @@ export default function App() {
     { id: "dashboard", icon: "📖", lb: "My Dashboard" },
     { id: "myshelf", icon: "📚", lb: "My Bookshelf" },
     { id: "monthly", icon: "🌙", lb: "Monthly Spells" },
+    { id: "calendar", icon: "📅", lb: "Calendar & Theme" },
     { id: "yearly", icon: "⭐", lb: "Yearly Stats" },
     { id: "reviews", icon: "🌟", lb: "Book Reviews" },
     { id: "forum", icon: "💬", lb: "Discussion Forum" },
@@ -739,7 +850,10 @@ export default function App() {
             <img src={LOGO} alt="BW" style={{ width: "100%", height: "100%", objectFit: "contain" }} onError={e => { e.target.parentNode.innerHTML = "<span style='font-size:20px;display:flex;width:100%;height:100%;align-items:center;justify-content:center'>🧙‍♂️</span>"; }} />
           </div>
           {sideOpen && <div><div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, color: "#C9A84C", letterSpacing: .8, whiteSpace: "nowrap" }}>BOOK WIZARDS</div><div style={{ fontSize: 9, color: "var(--mut)", letterSpacing: 2 }}>READING CLUB</div></div>}
-          <button style={{ marginLeft: "auto", background: "none", border: "none", color: "var(--sub)", fontSize: 13, cursor: "pointer", flexShrink: 0 }} onClick={() => setSideOpen(o => !o)}>{sideOpen ? "◀" : "▶"}</button>
+          {sideOpen && (
+            <button title="Refresh data" onClick={loadData} style={{ marginLeft: "auto", background: "none", border: "none", color: dataLoading ? "#C9A84C" : "var(--sub)", fontSize: 13, cursor: "pointer", flexShrink: 0, animation: dataLoading ? "pls 1s infinite" : "none" }}>🔄</button>
+          )}
+          <button style={{ marginLeft: sideOpen ? 4 : "auto", background: "none", border: "none", color: "var(--sub)", fontSize: 13, cursor: "pointer", flexShrink: 0 }} onClick={() => setSideOpen(o => !o)}>{sideOpen ? "◀" : "▶"}</button>
         </div>
         <div style={{ flex: 1, padding: "9px 7px", overflowY: "auto" }}>
           {NAV.map(n => (
@@ -876,15 +990,22 @@ export default function App() {
                 <GB ch="+ Add Book" onClick={() => { setBf(eBook); setEditBook(null); setShowBookMod(true); }} />
               </div>
             </div>
-            <div style={{ display: "flex", gap: 7, marginBottom: 18 }}>
+            <div style={{ display: "flex", gap: 7, marginBottom: 14, alignItems: "center" }}>
               {["Reading", "Finished", "Not Started"].map(t => (
                 <button key={t} onClick={() => setShelfTab(t)} style={{ padding: "6px 16px", borderRadius: 18, border: "1px solid", fontSize: 12, fontFamily: "'Cinzel',serif", cursor: "pointer", transition: "all .14s", borderColor: shelfTab === t ? "#C9A84C" : "var(--bdr2)", background: shelfTab === t ? "rgba(201,168,76,.1)" : "transparent", color: shelfTab === t ? "#C9A84C" : "var(--sub)" }}>
                   {t} ({myBooks.filter(b => b.status === t).length})
                 </button>
               ))}
+              <div style={{ marginLeft: "auto", width: 220 }}>
+                <FI value={shelfSearch} onChange={e => setShelfSearch(e.target.value)} placeholder="🔍 Search title or author..." style={{ marginBottom: 0 }} />
+              </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(148px,1fr))", gap: 14 }}>
-              {myBooks.filter(b => b.status === shelfTab).map(b => (
+              {myBooks.filter(b => b.status === shelfTab).filter(b => {
+                const q = shelfSearch.trim().toLowerCase();
+                if (!q) return true;
+                return (b.title || "").toLowerCase().includes(q) || (b.author || "").toLowerCase().includes(q);
+              }).map(b => (
                 <div key={b.id} style={{ ...card, overflow: "hidden", cursor: "pointer", transition: "transform .18s,box-shadow .18s" }} onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 14px 36px rgba(0,0,0,.5)"; }} onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}>
                   <div style={{ display: "flex", justifyContent: "center", padding: "13px 13px 6px", background: "var(--card2)" }}><Cover title={b.title} author={b.author} customCover={b.customcover} size={78} r={7} /></div>
                   <div style={{ padding: "9px 11px 11px" }}>
@@ -966,6 +1087,75 @@ export default function App() {
           </div>
         )}
 
+        {/* CALENDAR & THEME */}
+        {page === "calendar" && (
+          <div style={{ animation: "fiu .35s ease" }}>
+            <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", letterSpacing: .8, marginBottom: 3 }}>Calendar & Theme 📅</h1>
+            <p style={{ color: "var(--sub)", fontSize: 13, marginBottom: 16 }}>This month's theme, birthdays, and reading activity at a glance</p>
+
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 16 }}>
+              {MONTHS.map(m => <button key={m} onClick={() => setSelMonth(m)} style={{ padding: "5px 11px", borderRadius: 16, border: "1px solid", fontSize: 11, fontFamily: "'Cinzel',serif", cursor: "pointer", transition: "all .14s", borderColor: selMonth === m ? "#C9A84C" : "var(--bdr)", background: selMonth === m ? "rgba(201,168,76,.1)" : "transparent", color: selMonth === m ? "#C9A84C" : "var(--sub)" }}>{m.slice(0, 3)}</button>)}
+            </div>
+
+            <div style={{ background: "linear-gradient(135deg,#0C0906,#191208)", border: "1px solid rgba(201,168,76,.18)", borderRadius: 14, padding: 22, marginBottom: 16, display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{ fontSize: 44 }}>{currentTheme?.emoji || "📖"}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: "var(--sub)", letterSpacing: 2, marginBottom: 2 }}>{selMonth.toUpperCase()} THEME</div>
+                <div style={{ fontFamily: "'Cinzel',serif", fontSize: 18, color: "#C9A84C", marginBottom: 4 }}>{currentTheme?.title || "No theme set"}</div>
+                <div style={{ fontSize: 12, color: "var(--sub)", lineHeight: 1.5 }}>{currentTheme?.desc || ""}</div>
+              </div>
+              {user?.isadmin && <GB ch="🎨 Edit Theme" sm ghost onClick={() => { setThemeForm(currentTheme || { emoji: "📖", title: "", desc: "" }); setShowThemeEdit(true); }} />}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16 }}>
+              <div style={{ ...card, padding: 18 }}>
+                <SH ch={`🗓️ ${selMonth} ${YEAR}`} />
+                <MonthCalendar month={selMonth} year={YEAR} members={members} books={books} />
+                <div style={{ display: "flex", gap: 14, marginTop: 12, fontSize: 10, color: "var(--sub)" }}>
+                  <span>🎂 Birthday</span><span>📚 Books finished that day</span>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div style={{ ...card, padding: 18, border: "1px solid rgba(201,168,76,.3)" }}>
+                  <SH ch="✨ Today's Highlights" />
+                  <div style={{ fontSize: 11, color: "var(--mut)", marginBottom: 10 }}>{realToday.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>
+                  {birthdaysToday.length > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 12, color: "#C9A84C", fontFamily: "'Cinzel',serif", marginBottom: 6 }}>🎂 Birthdays Today</div>
+                      {birthdaysToday.map(m => <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}><Av m={m} size={22} /><span style={{ fontSize: 12 }}>{m.name}</span></div>)}
+                    </div>
+                  )}
+                  {booksFinishedToday.length > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 12, color: "#6FAF7B", fontFamily: "'Cinzel',serif", marginBottom: 6 }}>📚 Finished Today</div>
+                      {booksFinishedToday.map(b => <div key={b.id} style={{ fontSize: 12, color: "var(--sub)", marginBottom: 3 }}>{b.title} — {b.membername}</div>)}
+                    </div>
+                  )}
+                  {birthdaysToday.length === 0 && booksFinishedToday.length === 0 && (
+                    <div style={{ fontSize: 12, color: "var(--mut)", marginBottom: 10 }}>No birthdays or finishes today — a quiet day for reading.</div>
+                  )}
+                  <div style={{ borderTop: "1px solid var(--bdr)", paddingTop: 10, marginTop: 4 }}>
+                    <div style={{ fontSize: 12, color: "var(--text)", fontStyle: "italic", lineHeight: 1.6 }}>"{quoteOfDay.q}"</div>
+                    <div style={{ fontSize: 10, color: "var(--mut)", marginTop: 4 }}>— {quoteOfDay.a}</div>
+                  </div>
+                </div>
+                {upcomingBirthdays.length > 0 && (
+                  <div style={{ ...card, padding: 18 }}>
+                    <SH ch="🎂 Upcoming (30 days)" />
+                    {upcomingBirthdays.slice(0, 5).map(m => (
+                      <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                        <Av m={m} size={22} />
+                        <div style={{ flex: 1, fontSize: 12 }}>{m.name}</div>
+                        <div style={{ fontSize: 10, color: "var(--sub)" }}>{m.birthdaydate} {m.birthdaymonth?.slice(0, 3)}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* YEARLY */}
         {page === "yearly" && (
           <div style={{ animation: "fiu .35s ease" }}>
@@ -985,31 +1175,61 @@ export default function App() {
         )}
 
         {/* BOOK REVIEWS */}
-        {page === "reviews" && (
-          <div style={{ animation: "fiu .35s ease" }}>
-            <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", letterSpacing: .8, marginBottom: 4 }}>Book Reviews 🌟</h1>
-            <p style={{ color: "var(--sub)", fontSize: 13, marginBottom: 20 }}>What fellow wizards think about their books</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {books.filter(b => b.status === "Finished" && b.review && b.review.trim() !== "").sort((a, b) => b.rating - a.rating).map(b => {
-                const member = members.find(m => m.id === b.memberid);
-                return (
-                  <div key={b.id} style={{ ...card, padding: 18, display: "flex", gap: 14 }}>
-                    <Cover title={b.title} author={b.author} customCover={b.customcover} size={60} r={8} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
-                        <div><div style={{ fontFamily: "'Cinzel',serif", fontSize: 14, color: "var(--text)" }}>{b.title}</div><div style={{ fontSize: 12, color: "var(--sub)" }}>{b.author} · {b.genre}</div></div>
-                        <Stars v={b.rating} sz={14} />
+        {page === "reviews" && (() => {
+          const reviewed = books.filter(b => b.status === "Finished" && b.review && b.review.trim() !== "");
+          const groups = {};
+          reviewed.forEach(b => {
+            const key = (b.title || "").trim().toLowerCase();
+            if (!groups[key]) groups[key] = { title: b.title, author: b.author, genre: b.genre, cover: b.customcover, entries: [] };
+            groups[key].entries.push(b);
+            if (!groups[key].cover && b.customcover) groups[key].cover = b.customcover;
+          });
+          const groupList = Object.values(groups).map(g => ({
+            ...g,
+            avg: g.entries.reduce((a, e) => a + (parseFloat(e.rating) || 0), 0) / g.entries.length,
+            count: g.entries.length
+          })).sort((a, b) => b.count - a.count || b.avg - a.avg);
+
+          return (
+            <div style={{ animation: "fiu .35s ease" }}>
+              <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", letterSpacing: .8, marginBottom: 4 }}>Book Reviews 🌟</h1>
+              <p style={{ color: "var(--sub)", fontSize: 13, marginBottom: 20 }}>Every wizard's thoughts, grouped by book — see what everyone thought of the same read</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {groupList.map(g => (
+                  <div key={g.title.toLowerCase()} style={{ ...card, padding: 18 }}>
+                    <div style={{ display: "flex", gap: 14, marginBottom: 12 }}>
+                      <Cover title={g.title} author={g.author} customCover={g.cover} size={60} r={8} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 15, color: "var(--text)" }}>{g.title}</div>
+                        <div style={{ fontSize: 12, color: "var(--sub)", marginBottom: 5 }}>{g.author} · {g.genre}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <Stars v={Math.round(g.avg * 2) / 2} sz={13} />
+                          <span style={{ fontSize: 11, color: "var(--mut)" }}>{g.count} {g.count === 1 ? "wizard has" : "wizards have"} reviewed this</span>
+                        </div>
                       </div>
-                      <div style={{ fontSize: 14, color: "var(--text)", lineHeight: 1.7, fontStyle: "italic", marginBottom: 8 }}>"{b.review}"</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Av m={member} size={22} /><span style={{ fontSize: 11, color: "var(--sub)" }}>{member?.name || "Unknown"}</span><span style={{ fontSize: 10, color: "var(--mut)" }}>· {b.enddate ? new Date(b.enddate).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : ""}</span></div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingLeft: 4, borderLeft: "2px solid var(--bdr)" }}>
+                      {g.entries.sort((a, b) => (b.rating || 0) - (a.rating || 0)).map(b => {
+                        const member = members.find(m => m.id === b.memberid);
+                        return (
+                          <div key={b.id} style={{ paddingLeft: 14 }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Av m={member} size={22} /><span style={{ fontSize: 12, fontWeight: 700, fontFamily: "'Cinzel',serif" }}>{member?.name || "Unknown"}</span></div>
+                              <Stars v={b.rating} sz={11} />
+                            </div>
+                            <div style={{ fontSize: 13, color: "var(--sub)", lineHeight: 1.6, fontStyle: "italic" }}>"{b.review}"</div>
+                            <div style={{ fontSize: 10, color: "var(--mut)", marginTop: 3 }}>{b.enddate ? new Date(b.enddate).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : ""}</div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                );
-              })}
-              {books.filter(b => b.status === "Finished" && b.review && b.review.trim() !== "").length === 0 && <Nil icon="🌟" msg="No reviews yet. Add a review when you finish a book!" />}
+                ))}
+                {groupList.length === 0 && <Nil icon="🌟" msg="No reviews yet. Add a review when you finish a book!" />}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* FORUM */}
         {page === "forum" && (
@@ -1361,6 +1581,20 @@ export default function App() {
         } onClose={() => setShowGoal(false)} />
       )}
 
+      {showThemeEdit && (
+        <Modal title={`🎨 Edit ${selMonth} Theme`} ch={
+          <div>
+            <FL ch="Emoji" /><FI value={themeForm.emoji} onChange={e => setThemeForm(t => ({ ...t, emoji: e.target.value }))} placeholder="📖" style={{ maxWidth: 100 }} />
+            <FL ch="Theme Title" /><FI value={themeForm.title} onChange={e => setThemeForm(t => ({ ...t, title: e.target.value }))} placeholder="e.g. Classics Month" />
+            <FL ch="Description" /><FT value={themeForm.desc} onChange={e => setThemeForm(t => ({ ...t, desc: e.target.value }))} placeholder="What kind of books fit this month?" />
+            <div style={{ display: "flex", gap: 9, justifyContent: "flex-end", marginTop: 14 }}>
+              <GB ch="Cancel" ghost onClick={() => setShowThemeEdit(false)} />
+              <GB ch="Save Theme ✨" onClick={() => { setMonthlyThemes(mt => ({ ...mt, [selMonth]: themeForm })); setShowThemeEdit(false); showToast(`${selMonth} theme updated! 🎨`); }} />
+            </div>
+          </div>
+        } onClose={() => setShowThemeEdit(false)} />
+      )}
+
       {showProfEdit && (
         <Modal title="✏️ Edit My Profile" ch={
           <div>
@@ -1490,4 +1724,4 @@ export default function App() {
       )}
     </div>
   );
-}
+}s
