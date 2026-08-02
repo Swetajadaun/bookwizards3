@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 
 /* ═══════════════════════════════════════════════════════════════
-   📚 BOOK WIZARDS — v13 (THE COMPLETE UNIFIED MAGICAL EDITION)
+   📚 BOOK WIZARDS — v16 (BUILD SYNTAX FIX + COMPLETE FEATURES)
    ═══════════════════════════════════════════════════════════════ */
 
 const SUPABASE_URL = "https://nnxbappmomgnxqjtwaya.supabase.co";
@@ -88,7 +88,7 @@ async function sendWelcomeEmail(m) {
   } catch { }
 }
 
-/* ─── CONSTANTS ──────────────────────────────────────────────*/
+/* ─── CONSTANTS & EXPANDED FAMOUS QUOTES ─────────────────────*/
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const GENRES = ["Fiction", "Fantasy", "Science Fiction", "Thriller", "Mythology", "Mystery", "Non-Fiction", "Biography", "Memoir", "Self-Help", "Science", "Philosophy", "Poetry", "Romance", "Classic", "Children", "Graphic Novel", "Short Stories", "History", "Psychology"];
 const MOODS = ["Cozy Potion ☕", "Dark & Twisted 🕸️", "Brain Burner 🧠", "Gentle Stroll 🌿", "Epic Quest ⚔️", "Tearjerker 💧"];
@@ -102,15 +102,22 @@ const STATE_CITIES = {
   "West Bengal": ["Kolkata", "Howrah", "Durgapur", "Asansol", "Siliguri"]
 };
 const STATES = Object.keys(STATE_CITIES).sort();
+
 const QUOTES = [
+  { q: "A book must be the axe for the frozen sea within us.", a: "Franz Kafka" },
+  { q: "Books are the mirrors of the soul.", a: "Virginia Woolf" },
+  { q: "You think your pain and your heartbreak are unprecedented in the history of the world, but then you read.", a: "James Baldwin" },
+  { q: "If there's a book that you want to read, but it hasn't been written yet, then you must write it.", a: "Toni Morrison" },
+  { q: "I can never read all the books I want; I can never be all the people I want and live all the lives I want.", a: "Sylvia Plath" },
+  { q: "If you only read the books that everyone else is reading, you can only think what everyone else is thinking.", a: "Haruki Murakami" },
+  { q: "We read books to find out who we are. What other people, real or imaginary, do and think and feel is an essential guide.", a: "Ursula K. Le Guin" },
+  { q: "It is what you read when you don't have to that determines what you will be when you can't help it.", a: "Oscar Wilde" },
+  { q: "When I look back, I am so impressed again with the life-giving power of literature.", a: "Maya Angelou" },
+  { q: "I have always imagined that Paradise will be a kind of library.", a: "Jorge Luis Borges" },
   { q: "Words are our most inexhaustible source of magic.", a: "Albus Dumbledore" },
-  { q: "It is our choices that show what we truly are.", a: "Albus Dumbledore" },
-  { q: "A reader lives a thousand lives before he dies.", a: "George R.R. Martin" },
-  { q: "There is no friend as loyal as a book.", a: "Ernest Hemingway" },
-  { q: "Reading is dreaming with open eyes.", a: "Unknown" },
-  { q: "Not all those who wander are lost.", a: "J.R.R. Tolkien" },
-  { q: "So many books, so little time.", a: "Frank Zappa" }
+  { q: "A reader lives a thousand lives before he dies.", a: "George R.R. Martin" }
 ];
+
 const CHALLENGES = [
   { id: "c1", title: "Read an Indian Author", desc: "Read any book written by an Indian author", emoji: "🇮🇳", points: 50 },
   { id: "c2", title: "Historical Journey", desc: "Read a historical fiction or history book", emoji: "🏛️", points: 40 },
@@ -121,12 +128,14 @@ const CHALLENGES = [
   { id: "c7", title: "Marathon Reader", desc: "Read a book with 500+ pages", emoji: "🏃", points: 80 },
   { id: "c8", title: "Multilingual", desc: "Read a book in a language other than English", emoji: "🌍", points: 90 },
 ];
+
 const BINGO_SQUARES = [
   "Read 15 mins outdoors 🌿", "Read a book with a blue cover 📘", "Read an Indian author 🇮🇳", "Share a quote in The Pensieve ✨",
   "Read a book > 400 pages 📜", "Read before bedtime 🌙", "Read a poetry collection 🌹", "Discuss a book with your Buddy 🤝",
   "Read a debut novel 🐣", "Read for 3 days in a row 🔥", "Read a book published in 2026 🆕", "Read a memoir or biography ✍️",
   "Listen to an audiobook 🎧", "Read a book translated to English 🌍", "Read a childhood favorite 🎈", "Write a 5-star review ⭐"
 ];
+
 const YEAR = 2026;
 const DEFAULT_THEMES = {
   January: { emoji: "❄️", title: "Fresh Starts", desc: "New year, new chapters — hopeful, inspiring reads to kick things off." },
@@ -143,18 +152,46 @@ const DEFAULT_THEMES = {
   December: { emoji: "🎄", title: "Mythology & Fantasy", desc: "End the year with magic, myth and wonder." },
 };
 
+/* ─── SAFE SUPABASE FIELD GETTERS & ROBUST MONTH MATCHING ─────*/
+const getMemberId = (m) => m?.id || m?.ID || m?.memberid || m?.member_id || "";
+const getMemberName = (m) => m?.name || m?.Name || m?.email || "Wizard";
+const getBookMemberId = (b) => b?.memberid || b?.memberId || b?.member_id || b?.user_id || b?.userid || "";
+const getBookPages = (b) => parseInt(b?.totalpages || b?.totalPages || b?.total_pages) || 0;
+const getBookFinishedPages = (b) => parseInt(b?.finishedpages || b?.finishedPages || b?.finished_pages) || 0;
+
+const matchMonth = (b, targetMonth) => {
+  if (!b || !targetMonth) return false;
+  const target = targetMonth.trim().toLowerCase();
+  const rawMo = (b?.endmonth || b?.endMonth || b?.end_month || b?.month || "").trim().toLowerCase();
+  if (rawMo && rawMo === target) return true;
+  const rawDate = b?.enddate || b?.endDate || b?.end_date || b?.date || "";
+  if (rawDate) {
+    const d = new Date(rawDate);
+    if (!isNaN(d) && MONTHS[d.getMonth()].toLowerCase() === target) return true;
+  }
+  return false;
+};
+
+const isStatus = (b, expected) => {
+  const st = (b?.status || b?.Status || "").trim().toLowerCase();
+  const exp = expected.trim().toLowerCase();
+  if (exp === "to be read") return st === "to be read" || st === "not started" || st === "want to read";
+  if (exp === "dnf") return st === "dnf" || st === "did not finish";
+  return st === exp;
+};
+
 /* ─── UTILS ──────────────────────────────────────────────────*/
 const abg = n => ["#7B2D2D", "#1A472A", "#0E1A40", "#5C2D91", "#B8540A", "#1565C0", "#2E7D32", "#6D2D92"][(n?.charCodeAt(0) || 0) % 8];
 const ini = n => (n || "?").split(" ").slice(0, 2).map(w => w[0] || "").join("").toUpperCase();
 const fmt = d => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
-const nextId = ms => { const n = ms.map(m => parseInt((m.id || "BW000").replace(/\D/g, "")) || 0); return `BW${String(Math.max(0, ...n) + 1).padStart(3, "0")}`; };
+const nextId = ms => { const n = ms.map(m => parseInt((getMemberId(m) || "BW000").replace(/\D/g, "")) || 0); return `BW${String(Math.max(0, ...n) + 1).padStart(3, "0")}`; };
 const rand = arr => arr[Math.floor(Math.random() * arr.length)];
 const today = () => new Date().toISOString().slice(0, 10);
 
-/* ─── MONTHLY BUDDY SHUFFLE GENERATOR ─────────────────────────*/
+/* ─── MONTHLY BUDDY SHUFFLE & PAIRING DIRECTORY GENERATOR ────*/
 function getMonthlyBuddy(userId, monthName, membersList) {
   if (!membersList || membersList.length <= 1) return null;
-  const otherMembers = membersList.filter(m => m.id !== userId);
+  const otherMembers = membersList.filter(m => getMemberId(m) !== userId);
   const seedStr = userId + monthName + YEAR;
   let hash = 0;
   for (let i = 0; i < seedStr.length; i++) {
@@ -165,7 +202,25 @@ function getMonthlyBuddy(userId, monthName, membersList) {
   return otherMembers[idx];
 }
 
-/* ─── RESTORED PARTICLE ANIMATIONS (FLOWING STARS) ───────────*/
+function getMonthlyBuddyPairs(monthName, membersList) {
+  if (!membersList || membersList.length <= 1) return [];
+  const sorted = [...membersList].sort((a, b) => getMemberId(a).localeCompare(getMemberId(b)));
+  const seed = monthName.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) + YEAR;
+  const shuffled = [...sorted];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = (seed + i * 31) % (i + 1);
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  const pairs = [];
+  for (let i = 0; i < shuffled.length; i += 2) {
+    const m1 = shuffled[i];
+    const m2 = shuffled[i + 1] || shuffled[0];
+    pairs.push({ m1, m2 });
+  }
+  return pairs;
+}
+
+/* ─── PARTICLE ANIMATIONS (FLOWING STARS) ────────────────────*/
 function Particles() {
   const ps = Array.from({ length: 25 }, (_, i) => ({
     id: i,
@@ -191,7 +246,7 @@ function Particles() {
   );
 }
 
-/* ─── RESTORED SPLASH SCREEN ─────────────────────────────────*/
+/* ─── SPLASH SCREEN ──────────────────────────────────────────*/
 function Splash({ onDone }) {
   const [p, setP] = useState(0);
   const q = rand(QUOTES);
@@ -263,8 +318,8 @@ function Cover({ title, author, customCover, size = 80, r = 8 }) {
 }
 
 function Av({ m, size = 36 }) {
-  if (m?.photo) return <img src={m.photo} alt={m?.name} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", border: "2px solid #C9A84C", flexShrink: 0 }} />;
-  return <div style={{ width: size, height: size, borderRadius: "50%", background: abg(m?.name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * .36, fontWeight: 700, color: "#fff", flexShrink: 0, border: "2px solid rgba(201,168,76,.4)" }}>{ini(m?.name)}</div>;
+  if (m?.photo) return <img src={m.photo} alt={getMemberName(m)} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", border: "2px solid #C9A84C", flexShrink: 0 }} />;
+  return <div style={{ width: size, height: size, borderRadius: "50%", background: abg(getMemberName(m)), display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * .36, fontWeight: 700, color: "#fff", flexShrink: 0, border: "2px solid rgba(201,168,76,.4)" }}>{ini(getMemberName(m))}</div>;
 }
 
 function PBar({ p = 0, c = "#C9A84C", h = 7 }) {
@@ -434,47 +489,38 @@ export default function App() {
   const eBook = { title: "", author: "", genre: "Fiction", mood: "Cozy Potion ☕", origLang: "English", readLang: "English", totalPages: "", finishedPages: "", status: "Reading", rating: 0, review: "", customCover: "" };
   const [bf, setBf] = useState(eBook);
 
-  const myBooks = useMemo(() => books.filter(b => b.memberid === user?.id), [books, user]);
-  const fin = myBooks.filter(b => b.status === "Finished");
-  const rdg = myBooks.filter(b => b.status === "Reading");
-  const ns = myBooks.filter(b => b.status === "Not Started");
+  const myBooks = useMemo(() => books.filter(b => getBookMemberId(b) === getMemberId(user)), [books, user]);
+  const fin = useMemo(() => myBooks.filter(b => isStatus(b, "Finished")), [myBooks]);
+  const rdg = useMemo(() => myBooks.filter(b => isStatus(b, "Reading")), [myBooks]);
+  const tbr = useMemo(() => myBooks.filter(b => isStatus(b, "To Be Read")), [myBooks]);
+  const dnf = useMemo(() => myBooks.filter(b => isStatus(b, "DNF")), [myBooks]);
+
   const target = parseInt(user?.yearlytarget) || 12;
   const goalPct = Math.min(100, Math.round((fin.length / target) * 100));
-  const pagesRead = fin.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0);
+  const pagesRead = fin.reduce((a, b) => a + getBookPages(b), 0);
 
+  /* ── ASSIGNED BUDDY & ALL BUDDY PAIRS FOR THIS MONTH ── */
   const currentBuddy = useMemo(() => {
     if (!user || members.length <= 1) return null;
-    return getMonthlyBuddy(user.id, selMonth, members);
+    return getMonthlyBuddy(getMemberId(user), selMonth, members);
   }, [user, selMonth, members]);
 
-  const momentumHighlights = useMemo(() => {
-    const list = [];
-    members.forEach(m => {
-      const st = parseInt(m.streak_count) || 0;
-      if (st >= 3) list.push(`🔥 ${m.name} read ${st} days in a row!`);
-    });
-    books.forEach(b => {
-      if (b.status === "Reading" && b.pct >= 50 && b.pct <= 90) {
-        list.push(`✨ ${b.membername} reached ${b.pct}% in "${b.title}"!`);
-      }
-      if (b.status === "Finished") {
-        list.push(`🎉 ${b.membername} finished "${b.title}"!`);
-      }
-    });
-    if (list.length === 0) {
-      list.push("✨ Welcome to Book Wizards — read at your own pace!");
-      list.push("📖 Every page read is a magical step forward!");
-    }
-    return list;
-  }, [members, books]);
+  const allMonthBuddyPairs = useMemo(() => {
+    return getMonthlyBuddyPairs(selMonth, members);
+  }, [selMonth, members]);
 
-  const [highlightIdx, setHighlightIdx] = useState(0);
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setHighlightIdx(i => (i + 1) % momentumHighlights.length);
-    }, 4500);
-    return () => clearInterval(timer);
-  }, [momentumHighlights]);
+  /* ── LIVE DAILY DISPATCH (REPLACES IRRITATING TICKER) ── */
+  const activeWizardsToday = useMemo(() => {
+    const td = today();
+    const yd = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    return members.filter(m => m.last_checkin === td || m.last_checkin === yd).length;
+  }, [members]);
+
+  const recentMilestone = useMemo(() => {
+    const latestFin = books.filter(b => isStatus(b, "Finished")).slice(-1)[0];
+    if (latestFin) return `🎉 ${latestFin.membername || "A wizard"} just finished "${latestFin.title}"!`;
+    return `✨ ${activeWizardsToday} wizards have checked in their reading today!`;
+  }, [books, activeWizardsToday]);
 
   useEffect(() => {
     let interval;
@@ -490,7 +536,7 @@ export default function App() {
       const [ms, bs] = await Promise.all([SB.select("members"), SB.select("books")]);
       setMembers(ms); setBooks(bs);
       if (user) {
-        const fresh = ms.find(m => m.id === user.id);
+        const fresh = ms.find(m => getMemberId(m) === getMemberId(user));
         if (fresh) setUser(fresh);
       }
     } catch (e) { console.error("Load error:", e); }
@@ -511,7 +557,6 @@ export default function App() {
     rd.readAsDataURL(f);
   }
 
-  /* ── 100% RESTORED WORKING v7 LOGIN (FRESH SUPABASE FETCH FIRST) ── */
   async function doLogin() {
     setLoading(true); setLoginErr("");
     try {
@@ -522,7 +567,7 @@ export default function App() {
       setMembers(freshMembers);
       setBooks(freshBooks);
       const email = loginEmail.toLowerCase().trim();
-      const found = freshMembers.find(m => (m.email || "").toLowerCase().trim() === email);
+      const found = freshMembers.find(m => (m.email || m.Email || "").toLowerCase().trim() === email);
       if (!found) {
         setLoginErr("⚡ No wizard found with that email. Please Request Admission below!");
         setLoading(false);
@@ -538,7 +583,6 @@ export default function App() {
     }
   }
 
-  /* ── 100% RESTORED WORKING REGISTRATION (REQUEST ADMISSION) ── */
   async function doRegister() {
     if (!reg.name || !reg.email) { setRegErr("Name and email are required."); return; }
     if (!reg.bio) { setRegErr("Please write a short bio."); return; }
@@ -546,7 +590,7 @@ export default function App() {
     setLoading(true);
     let lm = members;
     if (USE_SB) { lm = await SB.select("members"); setMembers(lm); }
-    if (lm.find(m => (m.email || "").toLowerCase() === reg.email.toLowerCase())) {
+    if (lm.find(m => (m.email || m.Email || "").toLowerCase() === reg.email.toLowerCase())) {
       setRegErr("Email already registered!"); setLoading(false); return;
     }
     const newM = {
@@ -559,7 +603,7 @@ export default function App() {
     };
     if (USE_SB) { await SB.insert("members", newM); await loadData(); } else setMembers(ms => [...ms, newM]);
     await sendWelcomeEmail(newM);
-    setNewMemberName(newM.name); setUser(newM); setLoading(false); setWelcomeMsg(true);
+    setNewMemberName(getMemberName(newM)); setUser(newM); setLoading(false); setWelcomeMsg(true);
     setTimeout(() => { setWelcomeMsg(false); setScreen("app"); }, 4000);
   }
 
@@ -576,8 +620,8 @@ export default function App() {
     }
     const updated = { ...user, last_checkin: td, streak_count: newStreak };
     setUser(updated);
-    setMembers(ms => ms.map(m => m.id === user.id ? updated : m));
-    if (USE_SB) await SB.update("members", { last_checkin: td, streak_count: newStreak }, user.id);
+    setMembers(ms => ms.map(m => getMemberId(m) === getMemberId(user) ? updated : m));
+    if (USE_SB) await SB.update("members", { last_checkin: td, streak_count: newStreak }, getMemberId(user));
     showToast(`Awesome! Streak updated to ${newStreak} ${newStreak === 1 ? "day" : "days in a row"}! 🔥`);
   }
 
@@ -593,7 +637,7 @@ export default function App() {
     const wasEdit = !!editBook;
     const bk = {
       id: editBook ? editBook.id : "b" + Date.now(),
-      memberid: user.id, membername: user.name,
+      memberid: getMemberId(user), membername: getMemberName(user),
       title: bf.title, author: bf.author, genre: bf.genre, mood: bf.mood,
       totalpages: tp, finishedpages: fp, pct,
       status: bf.status, rating: bf.rating, review: bf.review,
@@ -611,15 +655,15 @@ export default function App() {
 
   async function saveGoal() {
     const updated = { ...user, yearlytarget: parseInt(goalVal) || 12 };
-    setUser(updated); setMembers(ms => ms.map(m => m.id === user.id ? updated : m));
-    if (USE_SB) await SB.update("members", { yearlytarget: updated.yearlytarget }, user.id);
+    setUser(updated); setMembers(ms => ms.map(m => getMemberId(m) === getMemberId(user) ? updated : m));
+    if (USE_SB) await SB.update("members", { yearlytarget: updated.yearlytarget }, getMemberId(user));
     setShowGoal(false); showToast("Reading goal updated! 🎯");
   }
 
   async function saveProfile() {
     const updated = { ...user, ...pe };
-    setUser(updated); setMembers(ms => ms.map(m => m.id === user.id ? updated : m));
-    if (USE_SB) await SB.update("members", pe, user.id);
+    setUser(updated); setMembers(ms => ms.map(m => getMemberId(m) === getMemberId(user) ? updated : m));
+    if (USE_SB) await SB.update("members", pe, getMemberId(user));
     setShowProfEdit(false); showToast("Profile saved! ✨");
   }
 
@@ -630,44 +674,64 @@ export default function App() {
       if (USE_SB) await SB.delete("books", id);
     }
     if (type === "member") {
-      setBooks(bs => bs.filter(b => b.memberid !== id));
-      setMembers(ms => ms.filter(m => m.id !== id));
+      setBooks(bs => bs.filter(b => getBookMemberId(b) !== id));
+      setMembers(ms => ms.filter(m => getMemberId(m) !== id));
       if (USE_SB) {
         await SB.deleteWhere("books", "memberid", id);
         await SB.delete("members", id);
       }
-      if (id === user.id) { setUser(null); setScreen("login"); }
+      if (id === getMemberId(user)) { setUser(null); setScreen("login"); }
     }
     setConfirmDel(null); showToast("Deleted successfully", "error");
   }
 
   function toggleBingoSquare(idx) {
-    const current = userBingo[user.id] || {};
+    const uId = getMemberId(user);
+    const current = userBingo[uId] || {};
     const updated = { ...current, [idx]: !current[idx] };
-    setUserBingo({ ...userBingo, [user.id]: updated });
+    setUserBingo({ ...userBingo, [uId]: updated });
     if (updated[idx]) showToast("Bingo square marked complete! 🎯");
   }
 
-  const mFin = books.filter(b => b.status === "Finished" && b.endmonth === selMonth);
-  const mPages = mFin.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0);
-  const gCounts = mFin.reduce((a, b) => { a[b.genre] = (a[b.genre] || 0) + 1; return a; }, {});
-  const topG = Object.entries(gCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
-  const actR = new Set(mFin.map(b => b.memberid)).size;
+  /* ── SAFE STAT CALCULATIONS USING matchMonth ── */
+  const mFin = useMemo(() => books.filter(b => isStatus(b, "Finished") && matchMonth(b, selMonth)), [books, selMonth]);
+  const mPages = useMemo(() => mFin.reduce((a, b) => a + getBookPages(b), 0), [mFin]);
+  const gCounts = useMemo(() => mFin.reduce((a, b) => { a[b.genre] = (a[b.genre] || 0) + 1; return a; }, {}), [mFin]);
+  const topG = useMemo(() => Object.entries(gCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "—", [gCounts]);
+  const actR = useMemo(() => new Set(mFin.map(b => getBookMemberId(b))).size, [mFin]);
   const prevM = MONTHS[MONTHS.indexOf(selMonth) - 1] || MONTHS[11];
-  const mStats = members.map(m => {
-    const cur = books.filter(b => b.memberid === m.id && b.status === "Finished" && b.endmonth === selMonth);
-    const prv = books.filter(b => b.memberid === m.id && b.status === "Finished" && b.endmonth === prevM);
+
+  const mStats = useMemo(() => members.map(m => {
+    const mId = getMemberId(m);
+    const cur = books.filter(b => getBookMemberId(b) === mId && isStatus(b, "Finished") && matchMonth(b, selMonth));
+    const prv = books.filter(b => getBookMemberId(b) === mId && isStatus(b, "Finished") && matchMonth(b, prevM));
     const imp = prv.length > 0 ? Math.round(((cur.length - prv.length) / prv.length) * 100) : cur.length > 0 ? 100 : 0;
-    return { ...m, curB: cur.length, curP: cur.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0), prvB: prv.length, imp };
-  });
-  const yLine = MONTHS.map(mo => ({ l: mo.slice(0, 3), v: books.filter(b => b.status === "Finished" && b.endmonth === mo).length }));
-  const allG = books.reduce((a, b) => { if (b.status === "Finished") a[b.genre] = (a[b.genre] || 0) + 1; return a; }, {});
+    return { ...m, curB: cur.length, curP: cur.reduce((a, b) => a + getBookPages(b), 0), prvB: prv.length, imp };
+  }), [members, books, selMonth, prevM]);
+
+  const yLine = useMemo(() => MONTHS.map(mo => ({ l: mo.slice(0, 3), v: books.filter(b => isStatus(b, "Finished") && matchMonth(b, mo)).length })), [books]);
+  const allG = useMemo(() => books.reduce((a, b) => { if (isStatus(b, "Finished")) a[b.genre] = (a[b.genre] || 0) + 1; return a; }, {}), [books]);
   const gColors = ["#C9A84C", "#7B2D2D", "#1A472A", "#0E1A40", "#B8540A", "#5C2D91", "#2E7D32", "#1565C0"];
-  const gSlices = Object.entries(allG).slice(0, 7).map(([g, v], i) => ({ g, v, c: gColors[i % 8] }));
-  const board = members.map(m => {
-    const mf = books.filter(b => b.memberid === m.id && b.status === "Finished");
-    return { ...m, bR: mf.length, pR: mf.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0) };
-  }).sort((a, b) => b.bR - a.bR);
+  const gSlices = useMemo(() => Object.entries(allG).slice(0, 7).map(([g, v], i) => ({ g, v, c: gColors[i % 8] })), [allG]);
+
+  const board = useMemo(() => members.map(m => {
+    const mId = getMemberId(m);
+    const mf = books.filter(b => getBookMemberId(b) === mId && isStatus(b, "Finished"));
+    return { ...m, bR: mf.length, pR: mf.reduce((a, b) => a + getBookPages(b), 0) };
+  }).sort((a, b) => b.bR - a.bR), [members, books]);
+
+  const avgBookLength = useMemo(() => {
+    const allFin = books.filter(b => isStatus(b, "Finished"));
+    if (!allFin.length) return 0;
+    const tot = allFin.reduce((a, b) => a + getBookPages(b), 0);
+    return Math.round(tot / allFin.length);
+  }, [books]);
+
+  const activeCommunityPct = useMemo(() => {
+    if (!members.length) return 0;
+    const active = members.filter(m => parseInt(m.streak_count) > 0 || books.some(b => getBookMemberId(b) === getMemberId(m))).length;
+    return Math.round((active / members.length) * 100);
+  }, [members, books]);
 
   const NAV_SECTIONS = [
     {
@@ -677,7 +741,7 @@ export default function App() {
         { id: "myshelf", icon: "📚", lb: "My Bookshelf" },
         { id: "streak", icon: "🔥", lb: "Daily Streak" },
         { id: "timer", icon: "⏱️", lb: "Reading Timer" },
-        { id: "buddy", icon: "🤝", lb: "Monthly Buddy" }
+        { id: "buddy", icon: "🤝", lb: "My Monthly Buddy" }
       ]
     },
     {
@@ -685,6 +749,7 @@ export default function App() {
       items: [
         { id: "monthly", icon: "🌙", lb: "Monthly Spells" },
         { id: "quotes", icon: "✨", lb: "The Pensieve (Quotes)" },
+        { id: "clubbuddies", icon: "🤝", lb: "Club Buddy Pairs" },
         { id: "forum", icon: "💬", lb: "Discussion Forum" },
         { id: "reviews", icon: "🌟", lb: "Book Reviews" },
         { id: "greathall", icon: "🏰", lb: "Member Directory" }
@@ -715,10 +780,8 @@ export default function App() {
   `;
   const card = { background: "var(--card)", border: "1px solid var(--bdr)", borderRadius: 14 };
 
-  /* ── 1. RESTORED MAGICAL SPLASH SCREEN OPENER ── */
   if (splash) return <div><style>{css}</style><Splash onDone={() => setSplash(false)} /></div>;
 
-  /* ── 2. RESTORED WELCOME CELEBRATION SCREEN ── */
   if (welcomeMsg) return (
     <div style={{ position: "fixed", inset: 0, background: "#060402", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
       <style>{css}</style><Particles />
@@ -732,7 +795,6 @@ export default function App() {
     </div>
   );
 
-  /* ── 3. 100% RESTORED LOGIN & REGISTRATION SANCTUM (PARTICLES + AUTHOR QUOTES + EXACT WORDING) ── */
   if (screen !== "app") {
     const quoteOfDay = QUOTES[new Date().getDate() % QUOTES.length];
     return (
@@ -749,7 +811,6 @@ export default function App() {
             <div style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", letterSpacing: 2, animation: "glw 3s infinite" }}>BOOK WIZARDS</div>
             <div style={{ fontSize: 11, color: "var(--sub)", marginTop: 3, letterSpacing: 3, fontFamily: "'Cinzel',serif" }}>READING · MAGIC · COMMUNITY</div>
 
-            {/* ── RESTORED FAMOUS AUTHOR QUOTE RIGHT ON LOGIN ── */}
             <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(255,255,255,.03)", border: "1px solid rgba(201,168,76,.15)", borderRadius: 10 }}>
               <div style={{ fontSize: 13, fontStyle: "italic", color: "rgba(255,255,255,.7)", lineHeight: 1.5 }}>"{quoteOfDay.q}"</div>
               <div style={{ fontSize: 11, color: "#C9A84C", marginTop: 4 }}>— {quoteOfDay.a}</div>
@@ -790,7 +851,7 @@ export default function App() {
                 <div><FL ch="Country" /><FS ch={COUNTRIES.map(c => <option key={c}>{c}</option>)} value={reg.country} onChange={e => setReg(r => ({ ...r, country: e.target.value, state: "", city: "" }))} /></div>
                 {reg.country === "India" ? (<>
                   <div><FL ch="State *" /><FS ch={[<option key="" value="">— Select —</option>, ...STATES.map(s => <option key={s}>{s}</option>)]} value={reg.state} onChange={e => setReg(r => ({ ...r, state: e.target.value, city: "" }))} /></div>
-                  <div><FL ch="City *" /><FS ch={[<option key="" value="">{reg.state ? "— Select —" : "Select state first"}</option>, ...(regCities.map(c => <option key={c}>{c}</option>))]} value={reg.city} onChange={e => setReg(r => ({ ...r, city: e.target.value }))} disabled={!reg.state} /></div>
+                  <div><FL ch="City *" /><FS ch={[<option key="" value="">{reg.state ? "— Select —" : "Select state first"}</option>, ...regCities.map(c => <option key={c}>{c}</option>)]} value={reg.city} onChange={e => setReg(r => ({ ...r, city: e.target.value }))} disabled={!reg.state} /></div>
                 </>) : (
                   <div style={{ gridColumn: "1/-1" }}><FL ch="City" /><FI value={reg.city} onChange={e => setReg(r => ({ ...r, city: e.target.value }))} placeholder="Your city" /></div>
                 )}
@@ -849,7 +910,7 @@ export default function App() {
         <div style={{ padding: "12px 10px", borderTop: "1px solid var(--bdr)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => { setPe({ ...user }); setShowProfEdit(true); }}>
             <Av m={user} size={32} />
-            {sideOpen && <div style={{ overflow: "hidden", flex: 1 }}><div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{user.name.split(" ")[0]}</div><div style={{ fontSize: 10, color: "#C9A84C" }}>Day {(user.streak_count || 0)} Streak 🔥</div></div>}
+            {sideOpen && <div style={{ overflow: "hidden", flex: 1 }}><div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{getMemberName(user).split(" ")[0]}</div><div style={{ fontSize: 10, color: "#C9A84C" }}>Day {(user.streak_count || 0)} Streak 🔥</div></div>}
           </div>
           {sideOpen && <button style={{ marginTop: 8, width: "100%", padding: "5px", background: "transparent", border: "1px solid var(--bdr)", borderRadius: 6, color: "var(--sub)", fontSize: 11, cursor: "pointer" }} onClick={() => { setUser(null); setScreen("login"); }}>Sign Out 🌀</button>}
         </div>
@@ -858,13 +919,14 @@ export default function App() {
       {/* ── MAIN CONTENT AREA ── */}
       <div style={{ marginLeft: sideOpen ? 230 : 60, flex: 1, padding: "26px 30px", transition: "margin-left .22s ease" }}>
 
-        {/* TOP MOMENTUM BANNER */}
+        {/* ✨ TODAY'S DAILY DISPATCH */}
         <div style={{ background: "linear-gradient(90deg,rgba(201,168,76,.15),rgba(201,168,76,.03))", border: "1px solid rgba(201,168,76,.3)", borderRadius: 12, padding: "12px 18px", marginBottom: 22, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 20 }}>📢</span>
-            <span style={{ fontFamily: "'Cinzel',serif", fontSize: 14, color: "#C9A84C", fontWeight: 600 }}>
-              {momentumHighlights[highlightIdx]}
-            </span>
+            <span style={{ fontSize: 20 }}>✨</span>
+            <div>
+              <div style={{ fontSize: 10, color: "var(--mut)", letterSpacing: 1, textTransform: "uppercase" }}>TODAY'S DAILY DISPATCH</div>
+              <div style={{ fontFamily: "'Cinzel',serif", fontSize: 14, color: "#C9A84C", fontWeight: 600 }}>{recentMilestone}</div>
+            </div>
           </div>
           <button onClick={() => checkinToday()} style={{ background: "#C9A84C", color: "#000", border: "none", padding: "6px 14px", borderRadius: 8, fontWeight: "bold", cursor: "pointer", fontSize: 12, fontFamily: "'Cinzel',serif" }}>
             ✅ I Read Today
@@ -884,7 +946,7 @@ export default function App() {
                 <Av m={currentBuddy} size={46} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 10, color: "rgba(201,168,76,.8)", letterSpacing: 1, textTransform: "uppercase" }}>🤝 {selMonth} Buddy Assigned</div>
-                  <div style={{ fontFamily: "'Cinzel',serif", fontSize: 16, color: "#C9A84C" }}>You are paired with {currentBuddy.name}!</div>
+                  <div style={{ fontFamily: "'Cinzel',serif", fontSize: 16, color: "#C9A84C" }}>You are paired with {getMemberName(currentBuddy)}!</div>
                   <div style={{ fontSize: 12, color: "var(--sub)" }}>Tap to inspect what your buddy is reading and start your discussion.</div>
                 </div>
                 <GB ch="View Buddy →" sm ghost />
@@ -908,7 +970,7 @@ export default function App() {
               </div>
 
               <div style={{ ...card, padding: 18 }}>
-                <SH ch="📖 Book of the Month" action={user?.isadmin && <GB ch="Set" sm ghost onClick={() => { const t = prompt("Enter Book Title:"); if (t) { setBotm({ title: t, setBy: user.name, month: MONTHS[new Date().getMonth()] }); showToast("Book of the Month set! 📖"); } }} />} />
+                <SH ch="📖 Book of the Month" action={user?.isadmin && <GB ch="Set" sm ghost onClick={() => { const t = prompt("Enter Book Title:"); if (t) { setBotm({ title: t, setBy: getMemberName(user), month: MONTHS[new Date().getMonth()] }); showToast("Book of the Month set! 📖"); } }} />} />
                 {botm ? (
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                     <Cover title={botm.title} size={50} r={6} />
@@ -935,7 +997,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── MY BOOKSHELF ── */}
+        {/* ── MY BOOKSHELF (TO BE READ, READING, FINISHED, DNF) ── */}
         {page === "myshelf" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
@@ -947,10 +1009,10 @@ export default function App() {
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <div style={{ display: "flex", gap: 8 }}>
-                {["Reading", "Finished", "Not Started"].map(t => (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {["Reading", "Finished", "To Be Read", "DNF"].map(t => (
                   <button key={t} onClick={() => setShelfTab(t)} style={{ padding: "6px 14px", borderRadius: 16, border: "1px solid", cursor: "pointer", borderColor: shelfTab === t ? "#C9A84C" : "var(--bdr)", background: shelfTab === t ? "rgba(201,168,76,.1)" : "transparent", color: shelfTab === t ? "#C9A84C" : "var(--sub)" }}>
-                    {t} ({myBooks.filter(b => b.status === t).length})
+                    {t} ({myBooks.filter(b => isStatus(b, t)).length})
                   </button>
                 ))}
               </div>
@@ -960,7 +1022,7 @@ export default function App() {
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 14 }}>
-              {myBooks.filter(b => b.status === shelfTab).filter(b => {
+              {myBooks.filter(b => isStatus(b, shelfTab)).filter(b => {
                 const q = shelfSearch.trim().toLowerCase();
                 if (!q) return true;
                 return (b.title || "").toLowerCase().includes(q) || (b.author || "").toLowerCase().includes(q);
@@ -970,8 +1032,8 @@ export default function App() {
                   <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, height: 32, overflow: "hidden" }}>{b.title}</div>
                   <div style={{ fontSize: 11, color: "var(--sub)", marginBottom: 4 }}>{b.author}</div>
                   <div style={{ fontSize: 10, color: "#C9A84C", marginBottom: 8 }}>{b.mood || "Cozy Potion ☕"}</div>
-                  {b.status === "Reading" && <PBar p={b.pct} h={5} />}
-                  {b.status === "Finished" && <Stars v={b.rating} sz={12} />}
+                  {isStatus(b, "Reading") && <PBar p={b.pct} h={5} />}
+                  {isStatus(b, "Finished") && <Stars v={b.rating} sz={12} />}
                   <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                     <button style={{ flex: 1, padding: "4px", background: "rgba(201,168,76,.07)", border: "1px solid var(--bdr)", borderRadius: 6, color: "#C9A84C", fontSize: 10, cursor: "pointer" }} onClick={() => { setEditBook(b); setBf({ ...b }); setShowBookMod(true); }}>✏️ Edit</button>
                     <button style={{ padding: "4px 8px", background: "rgba(180,40,40,.1)", border: "1px solid rgba(180,40,40,.3)", borderRadius: 6, color: "#E07070", fontSize: 10, cursor: "pointer" }} onClick={() => setConfirmDel({ type: "book", id: b.id, name: b.title })}>🗑️</button>
@@ -1004,10 +1066,11 @@ export default function App() {
                   <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, borderBottom: "1px solid var(--bdr)", paddingBottom: 8 }}>
                     <span style={{ fontSize: 16 }}>{i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</span>
                     <Av m={m} size={26} />
-                    <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontFamily: "'Cinzel',serif" }}>{m.name}</div></div>
+                    <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontFamily: "'Cinzel',serif" }}>{getMemberName(m)}</div></div>
                     <span style={{ fontFamily: "'Cinzel',serif", fontSize: 16, color: "#C9A84C" }}>{m.curB}</span>
                   </div>
                 ))}
+                {mStats.filter(m => m.curB > 0).length === 0 && <Nil icon="📚" msg={`No finished books logged for ${selMonth}`} />}
               </div>
 
               <div style={{ ...card, padding: 16 }}>
@@ -1016,10 +1079,11 @@ export default function App() {
                   <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, borderBottom: "1px solid var(--bdr)", paddingBottom: 8 }}>
                     <span style={{ fontSize: 16 }}>{i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</span>
                     <Av m={m} size={26} />
-                    <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontFamily: "'Cinzel',serif" }}>{m.name}</div></div>
+                    <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontFamily: "'Cinzel',serif" }}>{getMemberName(m)}</div></div>
                     <span style={{ fontFamily: "'Cinzel',serif", fontSize: 16, color: "#6B9FD4" }}>{m.curP.toLocaleString()} pp</span>
                   </div>
                 ))}
+                {mStats.filter(m => m.curP > 0).length === 0 && <Nil icon="📜" msg={`No pages logged for ${selMonth}`} />}
               </div>
             </div>
 
@@ -1029,10 +1093,11 @@ export default function App() {
                 {mStats.filter(m => m.curB > 0).sort((a, b) => b.imp - a.imp).slice(0, 5).map((m, i) => (
                   <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
                     <Av m={m} size={26} />
-                    <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontFamily: "'Cinzel',serif" }}>{m.name}</div><div style={{ fontSize: 11, color: "var(--sub)" }}>{m.prvB} → {m.curB} books</div></div>
+                    <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontFamily: "'Cinzel',serif" }}>{getMemberName(m)}</div><div style={{ fontSize: 11, color: "var(--sub)" }}>{m.prvB} → {m.curB} books</div></div>
                     <span style={{ color: m.imp >= 0 ? "#6FAF7B" : "#E07070", fontWeight: "bold" }}>{m.imp >= 0 ? "+" : ""}{m.imp}%</span>
                   </div>
                 ))}
+                {mStats.filter(m => m.curB > 0).length === 0 && <Nil icon="🚀" msg="No comparison stats available yet" />}
               </div>
 
               <div style={{ ...card, padding: 16 }}>
@@ -1042,12 +1107,13 @@ export default function App() {
                   return (
                     <div key={m.id} style={{ marginBottom: 10 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}>
-                        <span>{m.name}</span><span style={{ color: "#C9A84C" }}>{m.curB} ({p}%)</span>
+                        <span>{getMemberName(m)}</span><span style={{ color: "#C9A84C" }}>{m.curB} ({p}%)</span>
                       </div>
-                      <PBar p={p} c={abg(m.name)} h={5} />
+                      <PBar p={p} c={abg(getMemberName(m))} h={5} />
                     </div>
                   );
                 })}
+                {mStats.filter(m => m.curB > 0).length === 0 && <Nil icon="📊" msg="No contribution data for this month" />}
               </div>
             </div>
           </div>
@@ -1065,13 +1131,13 @@ export default function App() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {quotes.map(q => {
-                const author = members.find(m => m.id === q.postedBy);
+                const author = members.find(m => getMemberId(m) === q.postedBy);
                 return (
                   <div key={q.id} style={{ ...card, padding: 20, background: "linear-gradient(135deg,#130F09,#19130A)" }}>
                     <div style={{ fontSize: 16, fontStyle: "italic", lineHeight: 1.6, color: "var(--text)", marginBottom: 12 }}>"{q.quote}"</div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--bdr)", paddingTop: 12 }}>
                       <div><span style={{ fontFamily: "'Cinzel',serif", fontSize: 13, color: "#C9A84C" }}>— {q.authorName}</span>{q.bookTitle && <span style={{ fontSize: 11, color: "var(--sub)", marginLeft: 6 }}>({q.bookTitle})</span>}</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}><Av m={author} size={20} /><span style={{ fontSize: 11, color: "var(--mut)" }}>{author?.name || "A Wizard"}</span></div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}><Av m={author} size={20} /><span style={{ fontSize: 11, color: "var(--mut)" }}>{getMemberName(author) || "A Wizard"}</span></div>
                     </div>
                   </div>
                 );
@@ -1080,13 +1146,13 @@ export default function App() {
           </div>
         )}
 
-        {/* ── MONTHLY BUDDY SHUFFLE ── */}
+        {/* ── MY MONTHLY BUDDY (`📖 MY STUDY` -> `id: "buddy"`) ── */}
         {page === "buddy" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <div>
-                <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C" }}>Monthly Reading Buddy 🤝</h1>
-                <p style={{ color: "var(--sub)", fontSize: 13, marginTop: 4 }}>Buddies are shuffled randomly on the 1st of every month!</p>
+                <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C" }}>My Monthly Buddy 🤝</h1>
+                <p style={{ color: "var(--sub)", fontSize: 13, marginTop: 4 }}>Your personal assigned reading partner for {selMonth}!</p>
               </div>
               <FS ch={MONTHS.map(m => <option key={m}>{m}</option>)} value={selMonth} onChange={e => setSelMonth(e.target.value)} style={{ width: 140, marginBottom: 0 }} />
             </div>
@@ -1095,29 +1161,59 @@ export default function App() {
               <div style={{ ...card, padding: 24, textAlign: "center", maxWidth: 520, margin: "0 auto" }}>
                 <div style={{ fontSize: 11, color: "var(--sub)", letterSpacing: 2, marginBottom: 12 }}>YOUR ASSIGNED BUDDY FOR {selMonth.toUpperCase()}</div>
                 <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}><Av m={currentBuddy} size={84} /></div>
-                <div style={{ fontFamily: "'Cinzel',serif", fontSize: 22, color: "#C9A84C" }}>{currentBuddy.name}</div>
+                <div style={{ fontFamily: "'Cinzel',serif", fontSize: 22, color: "#C9A84C" }}>{getMemberName(currentBuddy)}</div>
                 <div style={{ fontSize: 12, color: "var(--sub)", marginBottom: 18 }}>📍 {currentBuddy.city}, {currentBuddy.country}</div>
 
                 <div style={{ background: "var(--card2)", borderRadius: 12, padding: 16, textAlign: "left", marginBottom: 18, border: "1px solid var(--bdr)" }}>
                   <div style={{ fontSize: 11, fontWeight: "bold", color: "#C9A84C", marginBottom: 6, textTransform: "uppercase" }}>📖 What your buddy is reading right now:</div>
-                  {books.filter(b => b.memberid === currentBuddy.id && b.status === "Reading").slice(0, 2).map(b => (
+                  {books.filter(b => getBookMemberId(b) === getMemberId(currentBuddy) && isStatus(b, "Reading")).slice(0, 2).map(b => (
                     <div key={b.id} style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8 }}>
                       <Cover title={b.title} size={32} r={4} />
                       <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontFamily: "'Cinzel',serif" }}>{b.title}</div><div style={{ fontSize: 11, color: "var(--sub)" }}>{b.author}</div></div>
                       <span style={{ fontSize: 11, color: "#6B9FD4" }}>{b.pct}%</span>
                     </div>
                   ))}
-                  {books.filter(b => b.memberid === currentBuddy.id && b.status === "Reading").length === 0 && (
+                  {books.filter(b => getBookMemberId(b) === getMemberId(currentBuddy) && isStatus(b, "Reading")).length === 0 && (
                     <div style={{ fontSize: 12, color: "var(--mut)" }}>No book logged yet for this month. Send an owl to pick a book together!</div>
                   )}
                 </div>
 
-                <GB ch={`💬 Start Discussion with ${currentBuddy.name.split(" ")[0]}`} full onClick={() => {
-                  setNewPost({ title: `🤝 ${selMonth} Buddy Read: [Our Book Title]`, body: `Hey @${currentBuddy.name}! Which book should we pick together for this month?`, bookTitle: "" });
+                <GB ch={`💬 Start Discussion with ${getMemberName(currentBuddy).split(" ")[0]}`} full onClick={() => {
+                  setNewPost({ title: `🤝 ${selMonth} Buddy Read: [Our Book Title]`, body: `Hey @${getMemberName(currentBuddy)}! Which book should we pick together for this month?`, bookTitle: "" });
                   setShowNewPost(true); setPage("forum");
                 }} />
               </div>
             ) : <Nil icon="🤝" msg="Add more wizards to the club to enable monthly buddy pairing!" />}
+          </div>
+        )}
+
+        {/* ── CLUB BUDDY PAIRS (`🏰 THE GREAT HALL` -> `id: "clubbuddies"`) ── */}
+        {page === "clubbuddies" && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div>
+                <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C" }}>Club Buddy Pairs 🤝</h1>
+                <p style={{ color: "var(--sub)", fontSize: 13, marginTop: 4 }}>Every paired couple in the community for {selMonth}!</p>
+              </div>
+              <FS ch={MONTHS.map(m => <option key={m}>{m}</option>)} value={selMonth} onChange={e => setSelMonth(e.target.value)} style={{ width: 140, marginBottom: 0 }} />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14 }}>
+              {allMonthBuddyPairs.map((pair, idx) => (
+                <div key={idx} style={{ ...card, padding: 18, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Av m={pair.m1} size={36} />
+                    <span style={{ fontSize: 14, fontFamily: "'Cinzel',serif", fontWeight: "bold" }}>{getMemberName(pair.m1).split(" ")[0]}</span>
+                  </div>
+                  <span style={{ color: "#C9A84C", fontSize: 18 }}>🤝</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 14, fontFamily: "'Cinzel',serif", fontWeight: "bold" }}>{getMemberName(pair.m2).split(" ")[0]}</span>
+                    <Av m={pair.m2} size={36} />
+                  </div>
+                </div>
+              ))}
+              {allMonthBuddyPairs.length === 0 && <Nil icon="🤝" msg="No club buddy pairings available yet." />}
+            </div>
           </div>
         )}
 
@@ -1143,7 +1239,7 @@ export default function App() {
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Book Reviews 🌟</h1>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14 }}>
-              {books.filter(b => b.status === "Finished" && b.review).map(b => (
+              {books.filter(b => isStatus(b, "Finished") && b.review).map(b => (
                 <div key={b.id} style={{ ...card, padding: 16 }}>
                   <div style={{ display: "flex", gap: 12, marginBottom: 10 }}>
                     <Cover title={b.title} size={44} r={4} />
@@ -1163,12 +1259,13 @@ export default function App() {
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>The Great Hall 🏰</h1>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: 14 }}>
               {members.map(m => {
-                const mf = books.filter(b => b.memberid === m.id && b.status === "Finished").length;
-                const mr = books.filter(b => b.memberid === m.id && b.status === "Reading").length;
+                const mId = getMemberId(m);
+                const mf = books.filter(b => getBookMemberId(b) === mId && isStatus(b, "Finished")).length;
+                const mr = books.filter(b => getBookMemberId(b) === mId && isStatus(b, "Reading")).length;
                 return (
                   <div key={m.id} style={{ ...card, padding: 16, textAlign: "center", cursor: "pointer" }} onClick={() => setViewMember(m)}>
                     <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}><Av m={m} size={60} /></div>
-                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 14, fontWeight: "bold" }}>{m.name}</div>
+                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 14, fontWeight: "bold" }}>{getMemberName(m)}</div>
                     <div style={{ fontSize: 11, color: "var(--sub)", marginBottom: 10 }}>📍 {m.city}, {m.country}</div>
                     <div style={{ display: "flex", justifyContent: "center", gap: 16, borderTop: "1px solid var(--bdr)", paddingTop: 10 }}>
                       <div><div style={{ fontFamily: "'Cinzel',serif", fontSize: 16, color: "#C9A84C" }}>{mf}</div><div style={{ fontSize: 10, color: "var(--sub)" }}>read</div></div>
@@ -1181,7 +1278,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── CALENDAR & EVENTS (WITH WIZARD PHOTO & CELEBRATION MESSAGE) ── */}
+        {/* ── CALENDAR & EVENTS ── */}
         {page === "calendar" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -1234,7 +1331,7 @@ export default function App() {
                 <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: 14, background: "var(--card)", borderRadius: 12, marginBottom: 10, border: "1px solid rgba(201,168,76,.2)" }}>
                   <Av m={m} size={50} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 15, color: "#C9A84C" }}>🎂 Happy Birthday, {m.name}!</div>
+                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 15, color: "#C9A84C" }}>🎂 Happy Birthday, {getMemberName(m)}!</div>
                     <div style={{ fontSize: 12, color: "var(--sub)", fontStyle: "italic", marginTop: 3 }}>
                       "May your new year be filled with magical chapters and endless page-turners!"
                     </div>
@@ -1267,15 +1364,27 @@ export default function App() {
         {/* ── 4x4 INTERACTIVE BOOK BINGO ── */}
         {page === "bingo" && (
           <div>
-            <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Book Bingo (4x4) 🎯</h1>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, maxWidth: 640, margin: "0 auto" }}>
+            <div style={{ marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C" }}>Book Bingo (4x4) 🎯</h1>
+                <p style={{ color: "var(--sub)", fontSize: 13, marginTop: 4 }}>Tap squares as you complete mini reading spells across the year!</p>
+              </div>
+              <div style={{ padding: "8px 14px", background: "var(--card2)", border: "1px solid rgba(201,168,76,.3)", borderRadius: 12 }}>
+                <span style={{ fontSize: 11, color: "var(--sub)", textTransform: "uppercase" }}>Progress: </span>
+                <span style={{ fontFamily: "'Cinzel',serif", fontSize: 16, color: "#C9A84C", fontWeight: "bold" }}>
+                  {Object.values(userBingo[getMemberId(user)] || {}).filter(Boolean).length} / 16
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, maxWidth: 660, margin: "0 auto" }}>
               {BINGO_SQUARES.map((square, i) => {
-                const isDone = (userBingo[user.id] || {})[i];
+                const isDone = (userBingo[getMemberId(user)] || {})[i];
                 return (
                   <div key={i} onClick={() => toggleBingoSquare(i)}
-                    style={{ ...card, padding: 16, minHeight: 110, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", cursor: "pointer", border: isDone ? "2px solid #6FAF7B" : "1px solid var(--bdr)", background: isDone ? "rgba(111,175,123,.1)" : "var(--card)", transition: "all .15s" }}>
-                    <div style={{ fontSize: 22, marginBottom: 6 }}>{isDone ? "✅" : "🎯"}</div>
-                    <div style={{ fontSize: 12, fontFamily: "'Cinzel',serif", color: isDone ? "#6FAF7B" : "var(--text)" }}>{square}</div>
+                    style={{ ...card, padding: 18, minHeight: 120, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", cursor: "pointer", border: isDone ? "2px solid #C9A84C" : "1px solid var(--bdr)", background: isDone ? "linear-gradient(145deg,#1B140A,#251B0D)" : "var(--card)", boxShadow: isDone ? "0 4px 20px rgba(201,168,76,.2)" : "none", transition: "all .2s" }}>
+                    <div style={{ fontSize: 26, marginBottom: 8 }}>{isDone ? "✨" : "📜"}</div>
+                    <div style={{ fontSize: 13, fontFamily: "'Cinzel',serif", color: isDone ? "#C9A84C" : "var(--text)", lineHeight: 1.4 }}>{square}</div>
                   </div>
                 );
               })}
@@ -1290,7 +1399,7 @@ export default function App() {
             <p style={{ color: "var(--sub)", fontSize: 13, marginBottom: 16 }}>Complete challenges to earn points and badges</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 14 }}>
               {CHALLENGES.map(ch => {
-                const done = completedChallenges.some(c => c.memberId === user.id && c.challengeId === ch.id);
+                const done = completedChallenges.some(c => c.memberId === getMemberId(user) && c.challengeId === ch.id);
                 return (
                   <div key={ch.id} style={{ ...card, padding: 18, border: done ? "1px solid #6FAF7B" : "1px solid var(--bdr)" }}>
                     <div style={{ fontSize: 28, marginBottom: 8 }}>{ch.emoji}</div>
@@ -1300,7 +1409,7 @@ export default function App() {
                       <span style={{ fontSize: 12, color: "#C9A84C", fontWeight: "bold" }}>+{ch.points} pts</span>
                       {done ? <span style={{ color: "#6FAF7B", fontSize: 12 }}>✅ Done</span> : (
                         <GB ch="Mark Done" sm onClick={() => {
-                          setCompletedChallenges(c => [...c, { memberId: user.id, challengeId: ch.id }]);
+                          setCompletedChallenges(c => [...c, { memberId: getMemberId(user), challengeId: ch.id }]);
                           showToast(`Challenge completed! +${ch.points} pts 🏅`);
                         }} />
                       )}
@@ -1321,7 +1430,7 @@ export default function App() {
                 <div key={m.id} style={{ ...card, padding: 14, display: "flex", alignItems: "center", gap: 14, marginBottom: 10 }}>
                   <span style={{ fontSize: 18, width: 28 }}>{i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</span>
                   <Av m={m} size={40} />
-                  <div style={{ flex: 1 }}><div style={{ fontFamily: "'Cinzel',serif", fontSize: 14, fontWeight: "bold" }}>{m.name}</div><div style={{ fontSize: 11, color: "var(--sub)" }}>{m.pR.toLocaleString()} pages read</div></div>
+                  <div style={{ flex: 1 }}><div style={{ fontFamily: "'Cinzel',serif", fontSize: 14, fontWeight: "bold" }}>{getMemberName(m)}</div><div style={{ fontSize: 11, color: "var(--sub)" }}>{m.pR.toLocaleString()} pages read</div></div>
                   <span style={{ fontFamily: "'Cinzel',serif", fontSize: 20, color: "#C9A84C" }}>{m.bR} books</span>
                 </div>
               ))}
@@ -1333,6 +1442,19 @@ export default function App() {
         {page === "yearly" && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Yearly Stats ⭐</h1>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginBottom: 18 }}>
+              {[{ n: `${avgBookLength} pp`, l: "Average Book Length", e: "📐" }, { n: `${activeCommunityPct}%`, l: "Community Active Rate", e: "⚡" }, { n: topG, l: "Most Read Genre", e: "🎭" }].map((item, idx) => (
+                <div key={idx} style={{ ...card, padding: 18, display: "flex", alignItems: "center", gap: 14 }}>
+                  <span style={{ fontSize: 32 }}>{item.e}</span>
+                  <div>
+                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 20, color: "#C9A84C" }}>{item.n}</div>
+                    <div style={{ fontSize: 12, color: "var(--sub)", marginTop: 2 }}>{item.l}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
               <div style={{ ...card, padding: 18 }}>
                 <SH ch="📈 Books Read Per Month" />
@@ -1348,13 +1470,14 @@ export default function App() {
               <SH ch="🎯 Member 2026 Goal Progress" />
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 12 }}>
                 {members.map(m => {
-                  const mf = books.filter(b => b.memberid === m.id && b.status === "Finished").length;
+                  const mId = getMemberId(m);
+                  const mf = books.filter(b => getBookMemberId(b) === mId && isStatus(b, "Finished")).length;
                   const pct = Math.min(100, Math.round((mf / (parseInt(m.yearlytarget) || 12)) * 100));
                   return (
                     <div key={m.id} style={{ padding: 12, background: "var(--card2)", borderRadius: 10, border: "1px solid var(--bdr)" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                         <Av m={m} size={30} />
-                        <div><div style={{ fontFamily: "'Cinzel',serif", fontSize: 13 }}>{m.name}</div><div style={{ fontSize: 10, color: "var(--sub)" }}>{mf} / {m.yearlytarget || 12} books</div></div>
+                        <div><div style={{ fontFamily: "'Cinzel',serif", fontSize: 13 }}>{getMemberName(m)}</div><div style={{ fontSize: 10, color: "var(--sub)" }}>{mf} / {m.yearlytarget || 12} books</div></div>
                       </div>
                       <PBar p={pct} h={6} />
                     </div>
@@ -1371,7 +1494,7 @@ export default function App() {
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Reading Wrapped 🎁</h1>
             <div style={{ ...card, padding: 30, textAlign: "center", maxWidth: 520, margin: "0 auto", background: "linear-gradient(135deg,#130F09,#1C150D)" }}>
               <Av m={user} size={70} />
-              <div style={{ fontFamily: "'Cinzel',serif", fontSize: 22, color: "#C9A84C", margin: "14px 0 6px" }}>{user.name}'s 2026 Wrapped</div>
+              <div style={{ fontFamily: "'Cinzel',serif", fontSize: 22, color: "#C9A84C", margin: "14px 0 6px" }}>{getMemberName(user)}'s 2026 Wrapped</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginTop: 20 }}>
                 {[{ n: fin.length, l: "Books Read" }, { n: pagesRead.toLocaleString(), l: "Pages Read" }, { n: user.streak_count || 0, l: "Day Streak" }].map((s, i) => (
                   <div key={i} style={{ padding: 14, background: "var(--card2)", borderRadius: 10 }}>
@@ -1429,13 +1552,13 @@ export default function App() {
                 <tbody>
                   {members.map(m => (
                     <tr key={m.id} style={{ borderBottom: "1px solid var(--bdr)" }}>
-                      <td style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10 }}><Av m={m} size={28} /><span>{m.name}</span></td>
+                      <td style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10 }}><Av m={m} size={28} /><span>{getMemberName(m)}</span></td>
                       <td style={{ padding: "12px 14px", color: "var(--sub)" }}>{m.email}</td>
                       <td style={{ padding: "12px 14px" }}>{m.city}</td>
                       <td style={{ padding: "12px 14px" }}>{m.streak_count || 0} 🔥</td>
-                      <td style={{ padding: "12px 14px" }}>{books.filter(b => b.memberid === m.id && b.status === "Finished").length}</td>
+                      <td style={{ padding: "12px 14px" }}>{books.filter(b => getBookMemberId(b) === getMemberId(m) && isStatus(b, "Finished")).length}</td>
                       <td style={{ padding: "12px 14px" }}>
-                        {m.id !== user.id && <GB ch="🗑️" sm red onClick={() => setConfirmDel({ type: "member", id: m.id, name: m.name })} />}
+                        {getMemberId(m) !== getMemberId(user) && <GB ch="🗑️" sm red onClick={() => setConfirmDel({ type: "member", id: getMemberId(m), name: getMemberName(m) })} />}
                       </td>
                     </tr>
                   ))}
@@ -1462,7 +1585,7 @@ export default function App() {
               <GB ch="Cancel" ghost onClick={() => setShowQuoteMod(false)} />
               <GB ch="Drop Quote ✨" onClick={() => {
                 if (!newQuote.quote || !newQuote.authorName) { showToast("Please fill the quote and author!", "error"); return; }
-                setQuotes(qs => [{ id: "q" + Date.now(), quote: newQuote.quote, authorName: newQuote.authorName, bookTitle: newQuote.bookTitle, postedBy: user.id, date: selMonth }, ...qs]);
+                setQuotes(qs => [{ id: "q" + Date.now(), quote: newQuote.quote, authorName: newQuote.authorName, bookTitle: newQuote.bookTitle, postedBy: getMemberId(user), date: selMonth }, ...qs]);
                 setShowQuoteMod(false);
                 setNewQuote({ quote: "", bookTitle: "", authorName: "" });
                 showToast("Quote added to The Pensieve! ✨");
@@ -1523,7 +1646,7 @@ export default function App() {
             <FL ch="Total Pages" /><FI type="number" value={bf.totalPages} onChange={e => setBf(b => ({ ...b, totalPages: e.target.value }))} />
             <FL ch="Pages Read" /><FI type="number" value={bf.finishedPages} onChange={e => setBf(b => ({ ...b, finishedPages: e.target.value }))} />
             <FL ch="Status" />
-            <FS ch={["Not Started", "Reading", "Finished"].map(s => <option key={s}>{s}</option>)} value={bf.status} onChange={e => setBf(b => ({ ...b, status: e.target.value }))} />
+            <FS ch={["To Be Read", "Reading", "Finished", "DNF"].map(s => <option key={s}>{s}</option>)} value={bf.status} onChange={e => setBf(b => ({ ...b, status: e.target.value }))} />
             <FL ch={bf.status === "Finished" ? "Review / Thoughts * (Required for Finished books)" : "Review / Thoughts (optional)"} />
             <FT value={bf.review} onChange={e => setBf(b => ({ ...b, review: e.target.value }))} placeholder={bf.status === "Finished" ? "Write at least a word or two about what you thought..." : "Your thoughts..."} />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
@@ -1538,7 +1661,7 @@ export default function App() {
         <Modal title="📬 Recommend a Book" ch={
           <div>
             <FL ch="Recommend to Member" />
-            <FS ch={members.map(m => <option key={m.id} value={m.name}>{m.name}</option>)} />
+            <FS ch={members.map(m => <option key={m.id} value={getMemberName(m)}>{getMemberName(m)}</option>)} />
             <FL ch="Book Title" /><FI value={recForm.bookTitle} onChange={e => setRecForm(r => ({ ...r, bookTitle: e.target.value }))} />
             <FL ch="Why are you recommending this?" /><FT value={recForm.note} onChange={e => setRecForm(r => ({ ...r, note: e.target.value }))} />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
@@ -1563,14 +1686,39 @@ export default function App() {
       )}
 
       {viewMember && (
-        <Modal title={`🧙 ${viewMember.name}`} ch={
-          <div style={{ textAlign: "center" }}>
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><Av m={viewMember} size={80} /></div>
-            <div style={{ fontFamily: "'Cinzel',serif", fontSize: 20 }}>{viewMember.name}</div>
-            <div style={{ fontSize: 13, color: "var(--sub)", margin: "6px 0 16px" }}>📍 {viewMember.city}, {viewMember.country}</div>
-            <GB ch="Close" ghost onClick={() => setViewMember(null)} />
+        <Modal title={`🧙 ${getMemberName(viewMember)}`} ch={
+          <div>
+            <div style={{ display: "flex", gap: 18, marginBottom: 18, flexWrap: "wrap" }}>
+              <div style={{ textAlign: "center", minWidth: 120 }}>
+                <Av m={viewMember} size={80} />
+                <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, color: "#C9A84C", marginTop: 8 }}>{getMemberId(viewMember)}</div>
+                <div style={{ fontSize: 11, color: "var(--sub)", marginTop: 3 }}>{viewMember.city}, {viewMember.country}</div>
+                {viewMember.bio && <div style={{ fontSize: 11, color: "var(--sub)", fontStyle: "italic", marginTop: 7, lineHeight: 1.5 }}>"{viewMember.bio}"</div>}
+                <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 8 }}>
+                  {viewMember.instagramlink && <a href={viewMember.instagramlink.startsWith("http") ? viewMember.instagramlink : `https://${viewMember.instagramlink}`} target="_blank" rel="noreferrer" style={{ fontSize: 18 }}>📸</a>}
+                  {viewMember.goodreadslink && <a href={viewMember.goodreadslink.startsWith("http") ? viewMember.goodreadslink : `https://${viewMember.goodreadslink}`} target="_blank" rel="noreferrer" style={{ fontSize: 18 }}>📗</a>}
+                </div>
+              </div>
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div style={{ fontFamily: "'Cinzel',serif", fontSize: 13, color: "#C9A84C", marginBottom: 10 }}>Books by {getMemberName(viewMember).split(" ")[0]}</div>
+                <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+                  {books.filter(b => getBookMemberId(b) === getMemberId(viewMember)).slice(0, 10).map(b => (
+                    <div key={b.id} style={{ textAlign: "center", width: 56 }}>
+                      <Cover title={b.title} author={b.author} customCover={b.customcover} size={46} r={5} />
+                      <div style={{ fontSize: 9, color: "var(--sub)", marginTop: 3, lineHeight: 1.2, height: 22, overflow: "hidden" }}>{b.title.slice(0, 14)}</div>
+                      <div style={{ fontSize: 8, padding: "1px 4px", borderRadius: 6, background: isStatus(b, "Finished") ? "rgba(111,175,123,.15)" : isStatus(b, "Reading") ? "rgba(107,159,212,.15)" : "rgba(255,255,255,.04)", color: isStatus(b, "Finished") ? "#6FAF7B" : isStatus(b, "Reading") ? "#6B9FD4" : "var(--mut)", marginTop: 2 }}>{b.status}</div>
+                    </div>
+                  ))}
+                  {books.filter(b => getBookMemberId(b) === getMemberId(viewMember)).length === 0 && <Nil icon="📚" msg="No books yet" />}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <div>{(user?.isadmin || getMemberId(viewMember) === getMemberId(user)) && getMemberId(viewMember) !== getMemberId(user) && <GB ch="🗑️ Delete Member" red onClick={() => { setViewMember(null); setConfirmDel({ type: "member", id: getMemberId(viewMember), name: getMemberName(viewMember) }); }} />}</div>
+              <GB ch="Close" ghost onClick={() => setViewMember(null)} />
+            </div>
           </div>
-        } onClose={() => setViewMember(null)} />
+        } onClose={() => setViewMember(null)} wide />
       )}
 
       {confirmDel && <Confirm msg={`Delete "${confirmDel.name}"?`} onYes={doDelete} onNo={() => setConfirmDel(null)} />}
