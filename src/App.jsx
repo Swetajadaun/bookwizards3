@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 
 /* ═══════════════════════════════════════════════════════════════
-   📚 BOOK WIZARDS — v10 (THE COMPLETE UNIFIED EDITION)
+   📚 BOOK WIZARDS — v13 (THE COMPLETE UNIFIED MAGICAL EDITION)
    ═══════════════════════════════════════════════════════════════ */
 
 const SUPABASE_URL = "https://nnxbappmomgnxqjtwaya.supabase.co";
@@ -70,7 +70,6 @@ const SB = {
   }
 };
 
-/* ─── EMAILJS WELCOME HOOK ───────────────────────────────────*/
 async function sendWelcomeEmail(m) {
   if (EJS_SERVICE === "YOUR_EMAILJS_SERVICE_ID") return;
   try {
@@ -80,11 +79,8 @@ async function sendWelcomeEmail(m) {
       body: JSON.stringify({
         service_id: EJS_SERVICE, template_id: EJS_TEMPLATE, user_id: EJS_KEY,
         template_params: {
-          to_name: m.name,
-          to_email: m.email,
-          member_id: m.id,
-          city: m.city,
-          country: m.country,
+          to_name: m.name, to_email: m.email, member_id: m.id,
+          city: m.city, country: m.country,
           handbook_link: "https://your-google-drive-link-to-handbook.pdf"
         }
       })
@@ -169,6 +165,64 @@ function getMonthlyBuddy(userId, monthName, membersList) {
   return otherMembers[idx];
 }
 
+/* ─── RESTORED PARTICLE ANIMATIONS (FLOWING STARS) ───────────*/
+function Particles() {
+  const ps = Array.from({ length: 25 }, (_, i) => ({
+    id: i,
+    x: Math.random() * 100,
+    d: 2.2 + Math.random() * 4,
+    dl: Math.random() * 5,
+    e: ["✨", "⭐", "💫", "⚡", "🌟", "☄️"][i % 6]
+  }));
+  return (
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}>
+      <style>{`
+        @keyframes fp{0%{opacity:0;transform:translateY(0) rotate(0)}15%{opacity:.85}100%{opacity:0;transform:translateY(-110vh) rotate(400deg)}}
+        @keyframes glw{0%,100%{text-shadow:0 0 18px rgba(201,168,76,.25)}50%{text-shadow:0 0 38px rgba(201,168,76,.7),0 0 70px rgba(201,168,76,.3)}}
+        @keyframes fiu{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+        @keyframes pls{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+      `}</style>
+      {ps.map(p => (
+        <div key={p.id} style={{ position: "absolute", left: `${p.x}%`, bottom: -24, fontSize: 14, animation: `fp ${p.d}s ${p.dl}s infinite ease-in`, opacity: 0 }}>
+          {p.e}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── RESTORED SPLASH SCREEN ─────────────────────────────────*/
+function Splash({ onDone }) {
+  const [p, setP] = useState(0);
+  const q = rand(QUOTES);
+  useEffect(() => {
+    const ts = [
+      setTimeout(() => setP(1), 300),
+      setTimeout(() => setP(2), 1100),
+      setTimeout(() => setP(3), 2100),
+      setTimeout(() => onDone(), 3900)
+    ];
+    return () => ts.forEach(clearTimeout);
+  }, [onDone]);
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#050302", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, overflow: "hidden" }}>
+      <Particles />
+      <div style={{ textAlign: "center", position: "relative", zIndex: 1, padding: 32 }}>
+        <div style={{ marginBottom: 14, transition: "opacity .6s", opacity: p >= 1 ? 1 : 0 }}>
+          <img src={LOGO} alt="BW" style={{ width: 88, height: 88, objectFit: "contain", borderRadius: 14 }} onError={e => { e.target.style.display = "none"; e.target.nextSibling.style.display = "block"; }} />
+          <div style={{ display: "none", fontSize: 68, animation: "pls 2s infinite" }}>🧙‍♂️</div>
+        </div>
+        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 40, fontWeight: 900, letterSpacing: 4, transition: "all .8s", opacity: p >= 1 ? 1 : 0, transform: p >= 1 ? "none" : "translateY(18px)", background: "linear-gradient(135deg,#8B6914,#C9A84C,#F5E6A0,#C9A84C,#8B6914)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", animation: p >= 2 ? "glw 2.2s infinite" : "none" }}>BOOK WIZARDS</div>
+        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: "rgba(201,168,76,.55)", letterSpacing: 6, marginTop: 5, transition: "opacity .8s", opacity: p >= 2 ? 1 : 0 }}>READING · MAGIC · COMMUNITY</div>
+        <div style={{ marginTop: 26, maxWidth: 360, transition: "opacity .8s", opacity: p >= 3 ? 1 : 0 }}>
+          <div style={{ color: "rgba(255,255,255,.55)", fontStyle: "italic", fontSize: 14, lineHeight: 1.9 }}>"{q.q}"</div>
+          <div style={{ color: "rgba(201,168,76,.45)", fontSize: 11, marginTop: 6, letterSpacing: 2 }}>— {q.a}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── COVER CACHE ────────────────────────────────────────────*/
 const coverCache = {};
 function Cover({ title, author, customCover, size = 80, r = 8 }) {
@@ -228,7 +282,7 @@ function Stars({ v = 0, onChange, sz = 15 }) {
   );
 }
 
-/* ─── RESTORED CHART COMPONENTS (LINE & DONUT) ───────────────*/
+/* ─── CHARTS ─────────────────────────────────────────────────*/
 function LineChart({ data, c = "#C9A84C", h = 100 }) {
   const max = Math.max(...data.map(d => d.v), 1);
   if (data.length < 2) return null;
@@ -311,7 +365,12 @@ function Confirm({ msg, onYes, onNo }) {
    MAIN APP
 ═══════════════════════════════════════════════════════════ */
 export default function App() {
+  const [splash, setSplash] = useState(true);
   const [screen, setScreen] = useState("login");
+  const [loading, setLoading] = useState(false);
+  const [welcomeMsg, setWelcomeMsg] = useState(false);
+  const [newMemberName, setNewMemberName] = useState("");
+
   const [page, setPage] = useState("dashboard");
   const [user, setUser] = useState(null);
   const [members, setMembers] = useState([]);
@@ -338,20 +397,20 @@ export default function App() {
   const [confirmDel, setConfirmDel] = useState(null);
   const [showProfEdit, setShowProfEdit] = useState(false);
   const [pe, setPe] = useState({});
-  const [welcomeMsg, setWelcomeMsg] = useState(false);
-  const [newMemberName, setNewMemberName] = useState("");
 
-  /* ── QUOTES FEED (THE PENSIEVE) ── */
+  const eReg = { name: "", email: "", phone: "", birthdayMonth: "January", birthdayDate: "", state: "", city: "", country: "India", postalAddress: "", instagramLink: "", goodreadsLink: "", bio: "", photo: "" };
+  const [reg, setReg] = useState(eReg);
+  const [regErr, setRegErr] = useState("");
+  const [photoPrev, setPhotoPrev] = useState("");
+  const regCities = reg.state ? (STATE_CITIES[reg.state] || []).sort() : [];
+
   const [quotes, setQuotes] = useState([
     { id: "q1", authorName: "Albus Dumbledore", quote: "Words are, in my not-so-humble opinion, our most inexhaustible source of magic.", bookTitle: "Harry Potter", postedBy: "BW001", date: "August 2026" }
   ]);
   const [newQuote, setNewQuote] = useState({ quote: "", bookTitle: "", authorName: "" });
   const [showQuoteMod, setShowQuoteMod] = useState(false);
 
-  /* ── 4x4 BINGO PROGRESS ── */
   const [userBingo, setUserBingo] = useState({});
-
-  /* ── READING TIMER STATE ── */
   const [timerRunning, setTimerRunning] = useState(false);
   const [timerSecs, setTimerSecs] = useState(0);
   const [timerBook, setTimerBook] = useState("");
@@ -383,13 +442,11 @@ export default function App() {
   const goalPct = Math.min(100, Math.round((fin.length / target) * 100));
   const pagesRead = fin.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0);
 
-  /* ── ASSIGNED BUDDY FOR THIS MONTH ── */
   const currentBuddy = useMemo(() => {
     if (!user || members.length <= 1) return null;
     return getMonthlyBuddy(user.id, selMonth, members);
   }, [user, selMonth, members]);
 
-  /* ── MOMENTUM ENCOURAGEMENT HIGHLIGHTS ── */
   const momentumHighlights = useMemo(() => {
     const list = [];
     members.forEach(m => {
@@ -419,7 +476,6 @@ export default function App() {
     return () => clearInterval(timer);
   }, [momentumHighlights]);
 
-  /* ── TIMER EFFECT ── */
   useEffect(() => {
     let interval;
     if (timerRunning) { interval = setInterval(() => setTimerSecs(s => s + 1), 1000); }
@@ -447,15 +503,64 @@ export default function App() {
     setTimeout(() => setToast({ msg: "", type: "success" }), 3500);
   }
 
+  function handlePhoto(e, cb) {
+    const f = e.target.files[0];
+    if (!f) return;
+    const rd = new FileReader();
+    rd.onload = ev => cb(ev.target.result);
+    rd.readAsDataURL(f);
+  }
+
+  /* ── 100% RESTORED WORKING v7 LOGIN (FRESH SUPABASE FETCH FIRST) ── */
   async function doLogin() {
-    setLoginErr("");
-    const email = loginEmail.toLowerCase().trim();
-    const found = members.find(m => (m.email || "").toLowerCase() === email) || members[0];
-    if (!found) {
-      setLoginErr("⚡ Wizard email not found. Try any registered email!");
-      return;
+    setLoading(true); setLoginErr("");
+    try {
+      const [freshMembers, freshBooks] = await Promise.all([
+        SB.select("members"),
+        SB.select("books")
+      ]);
+      setMembers(freshMembers);
+      setBooks(freshBooks);
+      const email = loginEmail.toLowerCase().trim();
+      const found = freshMembers.find(m => (m.email || "").toLowerCase().trim() === email);
+      if (!found) {
+        setLoginErr("⚡ No wizard found with that email. Please Request Admission below!");
+        setLoading(false);
+        return;
+      }
+      setUser(found);
+      setScreen("app");
+    } catch (e) {
+      console.error("Login error:", e);
+      setLoginErr("⚡ Connection error. Please check your internet and try again.");
+    } finally {
+      setLoading(false);
     }
-    setUser(found); setScreen("app");
+  }
+
+  /* ── 100% RESTORED WORKING REGISTRATION (REQUEST ADMISSION) ── */
+  async function doRegister() {
+    if (!reg.name || !reg.email) { setRegErr("Name and email are required."); return; }
+    if (!reg.bio) { setRegErr("Please write a short bio."); return; }
+    if (!reg.photo) { setRegErr("Please upload your photo."); return; }
+    setLoading(true);
+    let lm = members;
+    if (USE_SB) { lm = await SB.select("members"); setMembers(lm); }
+    if (lm.find(m => (m.email || "").toLowerCase() === reg.email.toLowerCase())) {
+      setRegErr("Email already registered!"); setLoading(false); return;
+    }
+    const newM = {
+      id: nextId(lm), name: reg.name, email: reg.email, phone: reg.phone,
+      birthdaymonth: reg.birthdayMonth, birthdaydate: reg.birthdayDate,
+      state: reg.state, city: reg.city, country: reg.country,
+      postaladdress: reg.postalAddress, instagramlink: reg.instagramLink,
+      goodreadslink: reg.goodreadsLink, bio: reg.bio, photo: reg.photo,
+      yearlytarget: 12, joindate: today(), isadmin: false, streak_count: 0
+    };
+    if (USE_SB) { await SB.insert("members", newM); await loadData(); } else setMembers(ms => [...ms, newM]);
+    await sendWelcomeEmail(newM);
+    setNewMemberName(newM.name); setUser(newM); setLoading(false); setWelcomeMsg(true);
+    setTimeout(() => { setWelcomeMsg(false); setScreen("app"); }, 4000);
   }
 
   async function checkinToday() {
@@ -478,6 +583,10 @@ export default function App() {
 
   async function saveBook() {
     if (!bf.title) { showToast("Please enter a book title!", "error"); return; }
+    if (bf.status === "Finished" && (!bf.review || !bf.review.trim())) {
+      showToast("Please share a quick review or reaction (even 1–2 words!) before marking as Finished ⭐", "error");
+      return;
+    }
     const tp = parseInt(bf.totalPages) || 0;
     const fp = parseInt(bf.finishedPages) || 0;
     const pct = tp > 0 ? Math.min(100, Math.round((fp / tp) * 100)) : 0;
@@ -539,7 +648,6 @@ export default function App() {
     if (updated[idx]) showToast("Bingo square marked complete! 🎯");
   }
 
-  /* ── CALCULATIONS FOR RESTORED OLD PAGES ── */
   const mFin = books.filter(b => b.status === "Finished" && b.endmonth === selMonth);
   const mPages = mFin.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0);
   const gCounts = mFin.reduce((a, b) => { a[b.genre] = (a[b.genre] || 0) + 1; return a; }, {});
@@ -561,23 +669,6 @@ export default function App() {
     return { ...m, bR: mf.length, pR: mf.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0) };
   }).sort((a, b) => b.bR - a.bR);
 
-  const upcomingBirthdays = members.filter(m => {
-    if (!m.birthdaymonth || !m.birthdaydate) return false;
-    const now = new Date();
-    const bday = new Date(now.getFullYear(), MONTHS.indexOf(m.birthdaymonth), parseInt(m.birthdaydate));
-    if (bday < now) bday.setFullYear(now.getFullYear() + 1);
-    const diff = (bday - now) / (1000 * 60 * 60 * 24);
-    return diff <= 30;
-  }).sort((a, b) => {
-    const now = new Date();
-    const d1 = new Date(now.getFullYear(), MONTHS.indexOf(a.birthdaymonth), parseInt(a.birthdaydate));
-    const d2 = new Date(now.getFullYear(), MONTHS.indexOf(b.birthdaymonth), parseInt(b.birthdaydate));
-    if (d1 < now) d1.setFullYear(now.getFullYear() + 1);
-    if (d2 < now) d2.setFullYear(now.getFullYear() + 1);
-    return d1 - d2;
-  });
-
-  /* ── 3-SECTION CATEGORIZED SIDEBAR NAVIGATION ── */
   const NAV_SECTIONS = [
     {
       group: "📖 MY STUDY",
@@ -624,20 +715,104 @@ export default function App() {
   `;
   const card = { background: "var(--card)", border: "1px solid var(--bdr)", borderRadius: 14 };
 
-  if (screen !== "app") return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <style>{css}</style>
-      <div style={{ background: "rgba(13,10,6,.97)", border: "1px solid var(--bdr2)", borderRadius: 22, padding: "38px 42px", width: 420, textAlign: "center" }}>
-        <div style={{ fontSize: 44, marginBottom: 10 }}>🧙‍♂️</div>
-        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", letterSpacing: 2, marginBottom: 20 }}>BOOK WIZARDS</div>
-        <FL ch="Email Address" />
-        <FI value={loginEmail} onChange={e => setLoginEmail(e.target.value)} placeholder="wizard@email.com" />
-        {loginErr && <div style={{ color: "#E07070", fontSize: 12, marginBottom: 10 }}>{loginErr}</div>}
-        <GB ch="⚡ Enter Sanctum" onClick={doLogin} full />
-        <div style={{ fontSize: 11, color: "var(--mut)", marginTop: 14 }}>Tip: Enter any registered email to test.</div>
+  /* ── 1. RESTORED MAGICAL SPLASH SCREEN OPENER ── */
+  if (splash) return <div><style>{css}</style><Splash onDone={() => setSplash(false)} /></div>;
+
+  /* ── 2. RESTORED WELCOME CELEBRATION SCREEN ── */
+  if (welcomeMsg) return (
+    <div style={{ position: "fixed", inset: 0, background: "#060402", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
+      <style>{css}</style><Particles />
+      <div style={{ textAlign: "center", position: "relative", zIndex: 1, animation: "fiu .5s ease" }}>
+        <div style={{ fontSize: 68, marginBottom: 16 }}>⚡</div>
+        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, color: "rgba(201,168,76,.55)", letterSpacing: 8, marginBottom: 10 }}>WELCOME TO</div>
+        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 32, color: "#C9A84C", letterSpacing: 3, animation: "glw 2s infinite", marginBottom: 8 }}>BOOK WIZARDS</div>
+        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 18, color: "var(--text)", fontStyle: "italic", marginBottom: 12 }}>"{newMemberName}, your journey begins now."</div>
+        <div style={{ color: "var(--sub)", fontSize: 14, maxWidth: 360, lineHeight: 1.8 }}>Your acceptance scroll has been sent to your email.<br />Welcome to the magical reading community! ✨</div>
       </div>
     </div>
   );
+
+  /* ── 3. 100% RESTORED LOGIN & REGISTRATION SANCTUM (PARTICLES + AUTHOR QUOTES + EXACT WORDING) ── */
+  if (screen !== "app") {
+    const quoteOfDay = QUOTES[new Date().getDate() % QUOTES.length];
+    return (
+      <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+        <style>{css}</style>
+        <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(ellipse at 20% 50%,rgba(123,45,45,.07) 0%,transparent 60%),radial-gradient(ellipse at 80% 30%,rgba(14,26,64,.1) 0%,transparent 60%)" }} />
+        <Particles />
+        <div style={{ position: "relative", zIndex: 1, background: "rgba(13,10,6,.97)", border: "1px solid var(--bdr2)", borderRadius: 22, padding: "38px 42px", width: screen === "register" ? 550 : 450, maxWidth: "95vw", maxHeight: "95vh", overflowY: "auto", boxShadow: "0 0 90px rgba(201,168,76,.07),0 32px 64px rgba(0,0,0,.7)" }}>
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: "linear-gradient(90deg,transparent,#C9A84C,transparent)", borderRadius: "22px 22px 0 0" }} />
+          <div style={{ textAlign: "center", marginBottom: 22 }}>
+            <div style={{ width: 68, height: 68, margin: "0 auto 10px", borderRadius: 13, overflow: "hidden", border: "1px solid var(--bdr2)", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(201,168,76,.07)" }}>
+              <img src={LOGO} alt="BW" style={{ width: "100%", height: "100%", objectFit: "contain" }} onError={e => { e.target.style.display = "none"; e.target.parentNode.innerHTML = "<span style='font-size:34px'>🧙‍♂️</span>"; }} />
+            </div>
+            <div style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", letterSpacing: 2, animation: "glw 3s infinite" }}>BOOK WIZARDS</div>
+            <div style={{ fontSize: 11, color: "var(--sub)", marginTop: 3, letterSpacing: 3, fontFamily: "'Cinzel',serif" }}>READING · MAGIC · COMMUNITY</div>
+
+            {/* ── RESTORED FAMOUS AUTHOR QUOTE RIGHT ON LOGIN ── */}
+            <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(255,255,255,.03)", border: "1px solid rgba(201,168,76,.15)", borderRadius: 10 }}>
+              <div style={{ fontSize: 13, fontStyle: "italic", color: "rgba(255,255,255,.7)", lineHeight: 1.5 }}>"{quoteOfDay.q}"</div>
+              <div style={{ fontSize: 11, color: "#C9A84C", marginTop: 4 }}>— {quoteOfDay.a}</div>
+            </div>
+          </div>
+
+          {screen === "login" && (
+            <>
+              <FL ch="Email Address" />
+              <FI value={loginEmail} onChange={e => setLoginEmail(e.target.value)} placeholder="wizard@email.com" type="email" onKeyDown={e => e.key === "Enter" && doLogin()} />
+              {loginErr && <div style={{ color: "#E07070", fontSize: 12, marginBottom: 10, textAlign: "center" }}>{loginErr}</div>}
+              <GB ch={loading ? "🌀 Summoning..." : "⚡ Enter the Library"} onClick={doLogin} full />
+              <div style={{ textAlign: "center", marginTop: 14, fontSize: 13, color: "var(--sub)" }}>
+                New wizard?{" "}
+                <button style={{ background: "none", border: "none", color: "#C9A84C", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'Cinzel',serif" }} onClick={() => setScreen("register")}>Request Admission</button>
+              </div>
+            </>
+          )}
+
+          {screen === "register" && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 14px" }}>
+                <div style={{ gridColumn: "1/-1", marginBottom: 12 }}>
+                  <FL ch="Your Photo * (mandatory)" />
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(201,168,76,.08)", border: "2px solid rgba(201,168,76,.3)", overflow: "hidden", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {photoPrev ? <img src={photoPrev} alt="p" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 26 }}>🧙</span>}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <input type="file" accept="image/*" onChange={e => handlePhoto(e, v => { setPhotoPrev(v); setReg(r => ({ ...r, photo: v })); })} style={{ display: "none" }} id="rph" />
+                      <label htmlFor="rph" style={{ display: "block", padding: "8px 13px", background: "rgba(201,168,76,.07)", border: "1px solid rgba(201,168,76,.28)", borderRadius: 9, color: "#C9A84C", fontSize: 12, cursor: "pointer", textAlign: "center", fontFamily: "'Cinzel',serif" }}>📷 Upload Photo</label>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ gridColumn: "1/-1" }}><FL ch="Full Name *" /><FI value={reg.name} onChange={e => setReg(r => ({ ...r, name: e.target.value }))} placeholder="Priya Sharma" /></div>
+                <div style={{ gridColumn: "1/-1" }}><FL ch="Gmail Address *" /><FI type="email" value={reg.email} onChange={e => setReg(r => ({ ...r, email: e.target.value }))} placeholder="priya@gmail.com" /></div>
+                <div><FL ch="Phone" /><FI value={reg.phone} onChange={e => setReg(r => ({ ...r, phone: e.target.value }))} placeholder="9876543210" /></div>
+                <div><FL ch="Country" /><FS ch={COUNTRIES.map(c => <option key={c}>{c}</option>)} value={reg.country} onChange={e => setReg(r => ({ ...r, country: e.target.value, state: "", city: "" }))} /></div>
+                {reg.country === "India" ? (<>
+                  <div><FL ch="State *" /><FS ch={[<option key="" value="">— Select —</option>, ...STATES.map(s => <option key={s}>{s}</option>)]} value={reg.state} onChange={e => setReg(r => ({ ...r, state: e.target.value, city: "" }))} /></div>
+                  <div><FL ch="City *" /><FS ch={[<option key="" value="">{reg.state ? "— Select —" : "Select state first"}</option>, ...(regCities.map(c => <option key={c}>{c}</option>))]} value={reg.city} onChange={e => setReg(r => ({ ...r, city: e.target.value }))} disabled={!reg.state} /></div>
+                </>) : (
+                  <div style={{ gridColumn: "1/-1" }}><FL ch="City" /><FI value={reg.city} onChange={e => setReg(r => ({ ...r, city: e.target.value }))} placeholder="Your city" /></div>
+                )}
+                <div style={{ gridColumn: "1/-1" }}><FL ch="Postal Address *" /><FT value={reg.postalAddress} onChange={e => setReg(r => ({ ...r, postalAddress: e.target.value }))} placeholder="House No, Street, Area, City, Pin Code" style={{ height: 64 }} /></div>
+                <div><FL ch="Birthday Month" /><FS ch={MONTHS.map(m => <option key={m}>{m}</option>)} value={reg.birthdayMonth} onChange={e => setReg(r => ({ ...r, birthdayMonth: e.target.value }))} /></div>
+                <div><FL ch="Birthday Date" /><FI type="number" min="1" max="31" value={reg.birthdayDate} onChange={e => setReg(r => ({ ...r, birthdayDate: e.target.value }))} placeholder="15" /></div>
+                <div><FL ch="Instagram" /><FI value={reg.instagramLink} onChange={e => setReg(r => ({ ...r, instagramLink: e.target.value }))} placeholder="instagram.com/username" /></div>
+                <div><FL ch="Goodreads" /><FI value={reg.goodreadsLink} onChange={e => setReg(r => ({ ...r, goodreadsLink: e.target.value }))} placeholder="goodreads.com/user" /></div>
+                <div style={{ gridColumn: "1/-1" }}><FL ch="Your Bio *" /><FT value={reg.bio} onChange={e => setReg(r => ({ ...r, bio: e.target.value }))} placeholder="I love reading literary fiction..." style={{ height: 80 }} /></div>
+              </div>
+              {regErr && <div style={{ color: "#E07070", fontSize: 12, margin: "6px 0", textAlign: "center" }}>{regErr}</div>}
+              <GB ch={loading ? "🌀 Summoning Acceptance Scroll..." : "🧙 Request Admission"} onClick={doRegister} full style={{ marginTop: 10 }} />
+              <div style={{ textAlign: "center", marginTop: 10, fontSize: 13, color: "var(--sub)" }}>
+                Already a wizard?{" "}
+                <button style={{ background: "none", border: "none", color: "#C9A84C", fontWeight: 700, fontSize: 13, cursor: "pointer" }} onClick={() => setScreen("login")}>Sign In</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg)" }}>
@@ -760,7 +935,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── MY BOOKSHELF (WITH RESTORED "NOT STARTED" / WANT TO READ TAB) ── */}
+        {/* ── MY BOOKSHELF ── */}
         {page === "myshelf" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
@@ -807,7 +982,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── MONTHLY SPELLS / COMMUNITY INSIGHTS (RESTORED FROM V7) ── */}
+        {/* ── MONTHLY SPELLS / COMMUNITY INSIGHTS ── */}
         {page === "monthly" && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 4 }}>Monthly Spells & Insights 🌙</h1>
@@ -982,7 +1157,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── THE GREAT HALL (MEMBER DIRECTORY - RESTORED FROM V7) ── */}
+        {/* ── THE GREAT HALL (MEMBER DIRECTORY) ── */}
         {page === "greathall" && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>The Great Hall 🏰</h1>
@@ -1006,7 +1181,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── CALENDAR & EVENTS (WITH BIRTHDAY WIZARD PHOTO & WRITTEN MESSAGE) ── */}
+        {/* ── CALENDAR & EVENTS (WITH WIZARD PHOTO & CELEBRATION MESSAGE) ── */}
         {page === "calendar" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -1050,7 +1225,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* SELECTED DAY INSPECTION DRAWER (SHOWING PHOTO & CUSTOM MESSAGE FOR BIRTHDAYS) */}
             <div style={{ ...card, padding: 20, background: "rgba(201,168,76,.04)", border: "1px solid rgba(201,168,76,.3)" }}>
               <h3 style={{ fontFamily: "'Cinzel',serif", fontSize: 16, color: "#C9A84C", marginBottom: 12 }}>
                 📍 Events for {selMonth} {selDay}, {YEAR}
@@ -1109,7 +1283,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── READING CHALLENGES (RESTORED FROM V7) ── */}
+        {/* ── READING CHALLENGES ── */}
         {page === "challenges" && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 4 }}>Reading Challenges 🏅</h1>
@@ -1138,7 +1312,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── LEADERBOARD (RESTORED FROM V7) ── */}
+        {/* ── LEADERBOARD ── */}
         {page === "leaderboard" && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Leaderboard 🏆</h1>
@@ -1155,7 +1329,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── YEARLY STATS (RESTORED WITH LINE & DONUT CHARTS FROM V7) ── */}
+        {/* ── YEARLY STATS ── */}
         {page === "yearly" && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Yearly Stats ⭐</h1>
@@ -1191,7 +1365,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── READING WRAPPED (RESTORED FROM V7) ── */}
+        {/* ── READING WRAPPED ── */}
         {page === "wrapped" && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Reading Wrapped 🎁</h1>
@@ -1210,7 +1384,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── READING TIMER (RESTORED FROM V7) ── */}
+        {/* ── READING TIMER ── */}
         {page === "timer" && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Reading Timer ⏱️</h1>
@@ -1239,7 +1413,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── ADMIN PANEL (RESTORED FROM V7) ── */}
+        {/* ── ADMIN PANEL ── */}
         {page === "admin" && user?.isadmin && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Admin Panel ⚙️</h1>
@@ -1339,7 +1513,6 @@ export default function App() {
         } onClose={() => setShowThemeEdit(false)} />
       )}
 
-      {/* BOOK ADD/EDIT MODAL (NOW WITH MOOD / POTION TAGS & NOT STARTED STATUS) */}
       {showBookMod && (
         <Modal title="✨ Add Book to Shelf" ch={
           <div>
@@ -1351,6 +1524,8 @@ export default function App() {
             <FL ch="Pages Read" /><FI type="number" value={bf.finishedPages} onChange={e => setBf(b => ({ ...b, finishedPages: e.target.value }))} />
             <FL ch="Status" />
             <FS ch={["Not Started", "Reading", "Finished"].map(s => <option key={s}>{s}</option>)} value={bf.status} onChange={e => setBf(b => ({ ...b, status: e.target.value }))} />
+            <FL ch={bf.status === "Finished" ? "Review / Thoughts * (Required for Finished books)" : "Review / Thoughts (optional)"} />
+            <FT value={bf.review} onChange={e => setBf(b => ({ ...b, review: e.target.value }))} placeholder={bf.status === "Finished" ? "Write at least a word or two about what you thought..." : "Your thoughts..."} />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
               <GB ch="Cancel" ghost onClick={() => setShowBookMod(false)} />
               <GB ch="Save Book 📚" onClick={saveBook} />
