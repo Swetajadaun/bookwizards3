@@ -23,10 +23,30 @@ function loadLocal(key, defaultVal) {
     return defaultVal;
   }
 }
+
 function saveLocal(key, val) {
   try {
     localStorage.setItem("BW_" + key, JSON.stringify(val));
   } catch (e) { }
+}
+
+/* ─── SMART MERGE UTILITY (PREVENTS DATA LOSS ON SYNC) ────────*/
+function mergeById(localList = [], remoteList = []) {
+  if (!Array.isArray(remoteList) || remoteList.length === 0) return localList;
+  const map = new Map();
+  localList.forEach(item => {
+    const id = getMemberId(item) || item.id;
+    if (id) map.set(String(id).toLowerCase(), item);
+  });
+  remoteList.forEach(item => {
+    const id = getMemberId(item) || item.id;
+    if (id) {
+      const key = String(id).toLowerCase();
+      const existing = map.get(key) || {};
+      map.set(key, { ...existing, ...item });
+    }
+  });
+  return Array.from(map.values());
 }
 
 /* ─── SUPABASE ───────────────────────────────────────────────*/
@@ -49,7 +69,10 @@ async function sbFetch(url, options = {}, retries = 2) {
         const errText = await r.text().catch(() => "");
         lastErr = `${r.status}${errText ? ": " + errText.slice(0, 160) : ""}`;
         if (r.status === 401 || r.status === 403) break;
-        if (i < retries - 1) { await new Promise(res => setTimeout(res, 700 * (i + 1))); continue; }
+        if (i < retries - 1) {
+          await new Promise(res => setTimeout(res, 700 * (i + 1)));
+          continue;
+        }
         break;
       }
       const text = await r.text();
@@ -69,19 +92,29 @@ const SB = {
   },
   async insert(table, row) {
     return await sbFetch(`${SUPABASE_URL}/rest/v1/${table}`, {
-      method: "POST", headers: { ...SB_HEADERS, Prefer: "return=representation" }, body: JSON.stringify(row)
+      method: "POST",
+      headers: { ...SB_HEADERS, Prefer: "return=representation" },
+      body: JSON.stringify(row)
     });
   },
   async update(table, row, id) {
     return await sbFetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {
-      method: "PATCH", headers: { ...SB_HEADERS, Prefer: "return=representation" }, body: JSON.stringify(row)
+      method: "PATCH",
+      headers: { ...SB_HEADERS, Prefer: "return=representation" },
+      body: JSON.stringify(row)
     });
   },
   async delete(table, id) {
-    return await sbFetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, { method: "DELETE", headers: SB_HEADERS });
+    return await sbFetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: SB_HEADERS
+    });
   },
   async deleteWhere(table, col, val) {
-    return await sbFetch(`${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${encodeURIComponent(val)}`, { method: "DELETE", headers: SB_HEADERS });
+    return await sbFetch(`${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${encodeURIComponent(val)}`, {
+      method: "DELETE",
+      headers: SB_HEADERS
+    });
   }
 };
 
@@ -92,10 +125,15 @@ async function sendWelcomeEmail(m) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        service_id: EJS_SERVICE, template_id: EJS_TEMPLATE, user_id: EJS_KEY,
+        service_id: EJS_SERVICE,
+        template_id: EJS_TEMPLATE,
+        user_id: EJS_KEY,
         template_params: {
-          to_name: m.name, to_email: m.email, member_id: m.id,
-          city: m.city, country: m.country,
+          to_name: m.name,
+          to_email: m.email,
+          member_id: m.id,
+          city: m.city,
+          country: m.country,
           handbook_link: "https://your-google-drive-link-to-handbook.pdf"
         }
       })
@@ -107,7 +145,6 @@ async function sendWelcomeEmail(m) {
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const GENRES = ["Fiction", "Fantasy", "Science Fiction", "Thriller", "Mythology", "Mystery", "Non-Fiction", "Biography", "Memoir", "Self-Help", "Science", "Philosophy", "Poetry", "Romance", "Classic", "Children", "Graphic Novel", "Short Stories", "History", "Psychology"];
 const MOODS = ["Cozy Potion ☕", "Dark & Twisted 🕸️", "Brain Burner 🧠", "Gentle Stroll 🌿", "Epic Quest ⚔️", "Tearjerker 💧"];
-const LANGS = ["English", "Hindi", "Bengali", "Dutch", "Swedish", "Mandarin", "Tamil", "Telugu", "Marathi", "Kannada", "Malayalam", "Gujarati", "Punjabi", "Urdu", "French", "German", "Spanish", "Portuguese", "Japanese", "Korean", "Arabic", "Russian", "Sanskrit"];
 const COUNTRIES = ["India", "United States", "United Kingdom", "Canada", "Australia", "UAE", "Singapore", "Germany", "France", "Netherlands", "New Zealand", "Sweden", "South Africa", "Japan", "Brazil", "Other"];
 const STATE_CITIES = {
   "Uttar Pradesh": ["Lucknow", "Kanpur", "Ghaziabad", "Agra", "Varanasi", "Meerut", "Prayagraj", "Bareilly", "Aligarh", "Noida", "Vrindavan", "Ayodhya"],
@@ -167,10 +204,22 @@ const DEFAULT_THEMES = {
   December: { emoji: "🎄", title: "Mythology & Fantasy", desc: "End the year with magic, myth and wonder." },
 };
 
-/* ─── SAFE SUPABASE FIELD GETTERS & ROBUST MONTH MATCHING ─────*/
-const getMemberId = (m) => String(m?.id || m?.ID || m?.memberid || m?.member_id || "").trim();
-const getMemberName = (m) => m?.name || m?.Name || m?.email || "Wizard";
-const getBookMemberId = (b) => String(b?.memberid || b?.memberId || b?.member_id || b?.user_id || b?.userid || "").trim();
+/* ─── SAFE & ROBUST GETTERS ───────────────────────────────────*/
+const getMemberId = (m) => {
+  if (!m) return "";
+  return String(m.id || m.ID || m.memberid || m.member_id || m.userid || m.user_id || "").trim().toLowerCase();
+};
+
+const getMemberName = (m) => {
+  if (!m) return "Wizard";
+  return m.name || m.Name || m.full_name || m.username || (m.email ? String(m.email).split("@")[0] : "Wizard");
+};
+
+const getBookMemberId = (b) => {
+  if (!b) return "";
+  return String(b.memberid || b.memberId || b.member_id || b.user_id || b.userid || "").trim().toLowerCase();
+};
+
 const getBookPages = (b) => parseInt(b?.totalpages || b?.totalPages || b?.total_pages) || 0;
 
 const matchMonth = (b, targetMonth) => {
@@ -196,34 +245,28 @@ const isStatus = (b, expected) => {
 
 /* ─── UTILS ──────────────────────────────────────────────────*/
 const abg = n => ["#7B2D2D", "#1A472A", "#0E1A40", "#5C2D91", "#B8540A", "#1565C0", "#2E7D32", "#6D2D92"][(n?.charCodeAt(0) || 0) % 8];
-const ini = n => (n || "?").split(" ").slice(0, 2).map(w => w[0] || "").join("").toUpperCase();
-const fmt = d => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
-const nextId = ms => { const n = ms.map(m => parseInt((getMemberId(m) || "BW000").replace(/\D/g, "")) || 0); return `BW${String(Math.max(0, ...n) + 1).padStart(3, "0")}`; };
+const ini = n => {
+  const words = String(n || "?").trim().split(/\s+/);
+  return words.slice(0, 2).map(w => w[0] || "").join("").toUpperCase() || "?";
+};
+const nextId = ms => {
+  const n = (ms || []).map(m => parseInt(String(getMemberId(m) || "BW000").replace(/\D/g, "")) || 0);
+  return `BW${String(Math.max(0, ...n) + 1).padStart(3, "0")}`;
+};
 const rand = arr => arr[Math.floor(Math.random() * arr.length)];
 const today = () => new Date().toISOString().slice(0, 10);
 
-/* ─── 100% DETERMINISTIC MONTHLY BUDDY SHUFFLE (STRICTLY SORTED BY ID FIRST) ────*/
-function getMonthlyBuddy(userId, monthName, membersList) {
-  if (!membersList || membersList.length <= 1) return null;
-  // Step 1: Strictly sort members alphabetically by unique ID so array order never changes
-  const sorted = [...membersList].sort((a, b) => getMemberId(a).localeCompare(getMemberId(b)));
-  const otherMembers = sorted.filter(m => getMemberId(m) !== userId);
-  if (otherMembers.length === 0) return null;
-  // Step 2: Use stable seed math
-  const seedStr = userId + monthName + YEAR;
-  let hash = 0;
-  for (let i = 0; i < seedStr.length; i++) {
-    hash = (hash << 5) - hash + seedStr.charCodeAt(i);
-    hash |= 0;
-  }
-  const idx = Math.abs(hash) % otherMembers.length;
-  return otherMembers[idx];
-}
-
-function getMonthlyBuddyPairs(monthName, membersList) {
+/* ─── 100% DETERMINISTIC & SYMMETRICAL BUDDY ALGORITHM ─────────
+   Guarantees User A is paired with User B, User B is paired with
+   User A, and pairings never change on refresh or browser restart.
+───────────────────────────────────────────────────────────────*/
+function getDeterministicBuddyPairs(monthName, membersList) {
   if (!membersList || membersList.length <= 1) return [];
-  // Step 1: Strictly sort members alphabetically by unique ID
-  const sorted = [...membersList].sort((a, b) => getMemberId(a).localeCompare(getMemberId(b)));
+  const sorted = [...membersList].sort((a, b) => {
+    const keyA = String(a.email || getMemberId(a)).toLowerCase().trim();
+    const keyB = String(b.email || getMemberId(b)).toLowerCase().trim();
+    return keyA.localeCompare(keyB);
+  });
   const seed = monthName.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) + YEAR;
   const shuffled = [...sorted];
   for (let i = shuffled.length - 1; i > 0; i--) {
@@ -237,6 +280,17 @@ function getMonthlyBuddyPairs(monthName, membersList) {
     pairs.push({ m1, m2 });
   }
   return pairs;
+}
+
+function getMonthlyBuddy(userId, monthName, membersList) {
+  if (!userId || !membersList || membersList.length <= 1) return null;
+  const targetId = String(userId).trim().toLowerCase();
+  const pairs = getDeterministicBuddyPairs(monthName, membersList);
+  for (const p of pairs) {
+    if (getMemberId(p.m1) === targetId) return p.m2;
+    if (getMemberId(p.m2) === targetId) return p.m1;
+  }
+  return null;
 }
 
 /* ─── PARTICLE ANIMATIONS (FLOWING STARS) ────────────────────*/
@@ -531,20 +585,20 @@ export default function App() {
 
   /* ── 0ms INSTANT SYNC WRAPPERS ── */
   const setUser = (u) => { setUserState(u); saveLocal("user", u); };
-  const setMembers = (ms) => {
+  const setMembers = useCallback((ms) => {
     setMembersState(prev => {
       const next = typeof ms === "function" ? ms(prev) : ms;
       saveLocal("members", next);
       return next;
     });
-  };
-  const setBooks = (bs) => {
+  }, []);
+  const setBooks = useCallback((bs) => {
     setBooksState(prev => {
       const next = typeof bs === "function" ? bs(prev) : bs;
       saveLocal("books", next);
       return next;
     });
-  };
+  }, []);
   const setQuotes = (qs) => {
     setQuotesState(prev => {
       const next = typeof qs === "function" ? qs(prev) : qs;
@@ -603,7 +657,7 @@ export default function App() {
   }, [user, selMonth, members]);
 
   const allMonthBuddyPairs = useMemo(() => {
-    return getMonthlyBuddyPairs(selMonth, members);
+    return getDeterministicBuddyPairs(selMonth, members);
   }, [selMonth, members]);
 
   /* ── ROTATING AUTHOR QUOTE ON LOGIN ── */
@@ -631,19 +685,24 @@ export default function App() {
 
   const fmtTimer = s => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
-  /* ── BACKGROUND SUPABASE SYNC (0ms HYDRATION) ── */
+  /* ── BACKGROUND SUPABASE SYNC WITH MERGE (0ms HYDRATION + NO OVERWRITING) ── */
   const loadData = useCallback(async () => {
     if (!USE_SB) return;
     try {
       const [ms, bs] = await Promise.all([SB.select("members"), SB.select("books")]);
-      if (ms && ms.length > 0) setMembers(ms);
-      if (bs && bs.length > 0) setBooks(bs);
-      if (user && ms) {
-        const fresh = ms.find(m => getMemberId(m) === getMemberId(user));
-        if (fresh) setUser(fresh);
+      if (Array.isArray(ms) && ms.length > 0) {
+        setMembers(prev => mergeById(prev, ms));
+      }
+      if (Array.isArray(bs) && bs.length > 0) {
+        setBooks(prev => mergeById(prev, bs));
+      }
+      if (user && Array.isArray(ms)) {
+        const userId = getMemberId(user);
+        const fresh = ms.find(m => getMemberId(m) === userId);
+        if (fresh) setUser({ ...user, ...fresh });
       }
     } catch (e) { console.error("Load error:", e); }
-  }, [user]);
+  }, [user, setMembers, setBooks]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -666,13 +725,13 @@ export default function App() {
       let lm = members;
       if (USE_SB) {
         const freshMembers = await SB.select("members");
-        if (freshMembers && freshMembers.length > 0) {
-          lm = freshMembers;
+        if (Array.isArray(freshMembers) && freshMembers.length > 0) {
+          lm = mergeById(members, freshMembers);
           setMembers(lm);
         }
       }
       const email = loginEmail.toLowerCase().trim();
-      const found = lm.find(m => (m.email || m.Email || "").toLowerCase().trim() === email);
+      const found = lm.find(m => String(m.email || m.Email || "").toLowerCase().trim() === email);
       if (!found) {
         setLoginErr("⚡ No wizard found with that email. Please Request Admission below!");
         setLoading(false);
@@ -696,22 +755,44 @@ export default function App() {
     let lm = members;
     if (USE_SB) {
       const res = await SB.select("members");
-      if (res) { lm = res; setMembers(lm); }
+      if (Array.isArray(res)) { lm = mergeById(members, res); setMembers(lm); }
     }
-    if (lm.find(m => (m.email || m.Email || "").toLowerCase() === reg.email.toLowerCase())) {
+    const emailNorm = reg.email.toLowerCase().trim();
+    if (lm.find(m => String(m.email || m.Email || "").toLowerCase().trim() === emailNorm)) {
       setRegErr("Email already registered!"); setLoading(false); return;
     }
     const newM = {
-      id: nextId(lm), name: reg.name, email: reg.email, phone: reg.phone,
-      birthdaymonth: reg.birthdayMonth, birthdaydate: reg.birthdayDate,
-      state: reg.state, city: reg.city, country: reg.country,
-      postaladdress: reg.postalAddress, instagramlink: reg.instagramLink,
-      goodreadslink: reg.goodreadsLink, bio: reg.bio, photo: reg.photo,
-      yearlytarget: 12, joindate: today(), isadmin: false, streak_count: 0
+      id: nextId(lm),
+      name: reg.name,
+      email: emailNorm,
+      phone: reg.phone,
+      birthdaymonth: reg.birthdayMonth,
+      birthdaydate: reg.birthdayDate,
+      state: reg.state,
+      city: reg.city || "Agra",
+      country: reg.country || "India",
+      postaladdress: reg.postalAddress,
+      instagramlink: reg.instagramLink,
+      goodreadslink: reg.goodreadsLink,
+      bio: reg.bio,
+      photo: reg.photo,
+      yearlytarget: 12,
+      joindate: today(),
+      isadmin: false,
+      streak_count: 0
     };
-    if (USE_SB) { await SB.insert("members", newM); await loadData(); } else setMembers(ms => [...ms, newM]);
+
+    // ALWAYS update local state immediately so user is logged in even if SB is slow
+    setMembers(ms => [...ms, newM]);
+    if (USE_SB) {
+      await SB.insert("members", newM);
+      loadData();
+    }
     await sendWelcomeEmail(newM);
-    setNewMemberName(getMemberName(newM)); setUser(newM); setLoading(false); setWelcomeMsg(true);
+    setNewMemberName(getMemberName(newM));
+    setUser(newM);
+    setLoading(false);
+    setWelcomeMsg(true);
     setTimeout(() => { setWelcomeMsg(false); setScreen("app"); }, 4000);
   }
 
@@ -744,15 +825,26 @@ export default function App() {
     const pct = tp > 0 ? Math.min(100, Math.round((fp / tp) * 100)) : 0;
     const wasEdit = !!editBook;
     const bk = {
-      id: editBook ? editBook.id : "b" + Date.now(),
-      memberid: getMemberId(user), membername: getMemberName(user),
-      title: bf.title, author: bf.author, genre: bf.genre, mood: bf.mood,
-      totalpages: tp, finishedpages: fp, pct,
-      status: bf.status, rating: bf.rating, review: bf.review,
-      enddate: today(), endmonth: MONTHS[new Date().getMonth()],
+      id: String(editBook ? editBook.id : "b" + Date.now()),
+      memberid: getMemberId(user),
+      membername: getMemberName(user),
+      title: bf.title,
+      author: bf.author,
+      genre: bf.genre,
+      mood: bf.mood,
+      totalpages: tp,
+      finishedpages: fp,
+      pct,
+      status: bf.status,
+      rating: bf.rating,
+      review: bf.review,
+      enddate: today(),
+      endmonth: MONTHS[new Date().getMonth()],
       customcover: bf.customCover || ""
     };
-    setBooks(bs => wasEdit ? bs.map(b => (b.id === bk.id ? bk : b)) : [...bs, bk]);
+
+    // Immediate optimistic UI update
+    setBooks(bs => wasEdit ? bs.map(b => (String(b.id) === bk.id ? bk : b)) : [...bs, bk]);
     if (USE_SB) {
       wasEdit ? await SB.update("books", bk, bk.id) : await SB.insert("books", bk);
       loadData();
@@ -778,12 +870,12 @@ export default function App() {
   async function doDelete() {
     const { type, id } = confirmDel;
     if (type === "book") {
-      setBooks(bs => bs.filter(b => b.id !== id));
+      setBooks(bs => bs.filter(b => String(b.id) !== String(id)));
       if (USE_SB) await SB.delete("books", id);
     }
     if (type === "member") {
-      setBooks(bs => bs.filter(b => getBookMemberId(b) !== id));
-      setMembers(ms => ms.filter(m => getMemberId(m) !== id));
+      setBooks(bs => bs.filter(b => getBookMemberId(b) !== String(id).toLowerCase()));
+      setMembers(ms => ms.filter(m => getMemberId(m) !== String(id).toLowerCase()));
       if (USE_SB) {
         await SB.deleteWhere("books", "memberid", id);
         await SB.delete("members", id);
@@ -1233,7 +1325,7 @@ export default function App() {
                 <div style={{ fontSize: 11, color: "var(--sub)", letterSpacing: 2, marginBottom: 12 }}>YOUR ASSIGNED BUDDY FOR {selMonth.toUpperCase()}</div>
                 <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}><Av m={currentBuddy} size={84} /></div>
                 <div style={{ fontFamily: "'Cinzel',serif", fontSize: 22, color: "#C9A84C" }}>{getMemberName(currentBuddy)}</div>
-                <div style={{ fontSize: 12, color: "var(--sub)", marginBottom: 18 }}>📍 {currentBuddy.city}, {currentBuddy.country}</div>
+                <div style={{ fontSize: 12, color: "var(--sub)", marginBottom: 18 }}>📍 {currentBuddy.city || "Agra"}, {currentBuddy.country || "India"}</div>
 
                 <div style={{ background: "var(--card2)", borderRadius: 12, padding: 16, textAlign: "left", marginBottom: 18, border: "1px solid var(--bdr)" }}>
                   <div style={{ fontSize: 11, fontWeight: "bold", color: "#C9A84C", marginBottom: 6, textTransform: "uppercase" }}>📖 What your buddy is reading right now:</div>
@@ -1379,7 +1471,7 @@ export default function App() {
             <PageHeader
               title="Club Buddy Pairs"
               icon="🤝"
-              briefing="See every paired reading couple across the entire community for the selected month."
+              briefing="See every paired reading couple across the entire community for the selected month. Pairing is symmetrical and locked for the month."
               action={
                 <FS ch={MONTHS.map(m => <option key={m}>{m}</option>)} value={selMonth} onChange={e => setSelMonth(e.target.value)} style={{ width: 140, marginBottom: 0 }} />
               }
@@ -1489,10 +1581,10 @@ export default function App() {
                 const mf = books.filter(b => getBookMemberId(b) === mId && isStatus(b, "Finished")).length;
                 const mr = books.filter(b => getBookMemberId(b) === mId && isStatus(b, "Reading")).length;
                 return (
-                  <div key={m.id} style={{ ...card, padding: 16, textAlign: "center", cursor: "pointer" }} onClick={() => setViewMember(m)}>
+                  <div key={m.id || Math.random()} style={{ ...card, padding: 16, textAlign: "center", cursor: "pointer" }} onClick={() => setViewMember(m)}>
                     <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}><Av m={m} size={60} /></div>
                     <div style={{ fontFamily: "'Cinzel',serif", fontSize: 14, fontWeight: "bold" }}>{getMemberName(m)}</div>
-                    <div style={{ fontSize: 11, color: "var(--sub)", marginBottom: 10 }}>📍 {m.city}, {m.country}</div>
+                    <div style={{ fontSize: 11, color: "var(--sub)", marginBottom: 10 }}>📍 {m.city || "Agra"}, {m.country || "India"}</div>
                     <div style={{ display: "flex", justifyContent: "center", gap: 16, borderTop: "1px solid var(--bdr)", paddingTop: 10 }}>
                       <div><div style={{ fontFamily: "'Cinzel',serif", fontSize: 16, color: "#C9A84C" }}>{mf}</div><div style={{ fontSize: 10, color: "var(--sub)" }}>read</div></div>
                       <div><div style={{ fontFamily: "'Cinzel',serif", fontSize: 16, color: "#6B9FD4" }}>{mr}</div><div style={{ fontSize: 10, color: "var(--sub)" }}>reading</div></div>
@@ -1682,7 +1774,7 @@ export default function App() {
 
             <div style={{ maxWidth: 640, margin: "0 auto" }}>
               {board.map((m, i) => (
-                <div key={m.id} style={{ ...card, padding: 14, display: "flex", alignItems: "center", gap: 14, marginBottom: 10 }}>
+                <div key={m.id || Math.random()} style={{ ...card, padding: 14, display: "flex", alignItems: "center", gap: 14, marginBottom: 10 }}>
                   <span style={{ fontSize: 18, width: 28 }}>{i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</span>
                   <Av m={m} size={40} />
                   <div style={{ flex: 1 }}><div style={{ fontFamily: "'Cinzel',serif", fontSize: 14, fontWeight: "bold" }}>{getMemberName(m)}</div><div style={{ fontSize: 11, color: "var(--sub)" }}>{m.pR.toLocaleString()} pages read</div></div>
@@ -1733,7 +1825,7 @@ export default function App() {
                   const mf = books.filter(b => getBookMemberId(b) === mId && isStatus(b, "Finished")).length;
                   const pct = Math.min(100, Math.round((mf / (parseInt(m.yearlytarget) || 12)) * 100));
                   return (
-                    <div key={m.id} style={{ padding: 12, background: "var(--card2)", borderRadius: 10, border: "1px solid var(--bdr)" }}>
+                    <div key={m.id || Math.random()} style={{ padding: 12, background: "var(--card2)", borderRadius: 10, border: "1px solid var(--bdr)" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                         <Av m={m} size={30} />
                         <div><div style={{ fontFamily: "'Cinzel',serif", fontSize: 13 }}>{getMemberName(m)}</div><div style={{ fontSize: 10, color: "var(--sub)" }}>{mf} / {m.yearlytarget || 12} books</div></div>
@@ -1789,10 +1881,10 @@ export default function App() {
                 </thead>
                 <tbody>
                   {members.map(m => (
-                    <tr key={m.id} style={{ borderBottom: "1px solid var(--bdr)" }}>
+                    <tr key={m.id || Math.random()} style={{ borderBottom: "1px solid var(--bdr)" }}>
                       <td style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10 }}><Av m={m} size={28} /><span>{getMemberName(m)}</span></td>
                       <td style={{ padding: "12px 14px", color: "var(--sub)" }}>{m.email}</td>
-                      <td style={{ padding: "12px 14px" }}>{m.city}</td>
+                      <td style={{ padding: "12px 14px" }}>{m.city || "Agra"}</td>
                       <td style={{ padding: "12px 14px" }}>{m.streak_count || 0} 🔥</td>
                       <td style={{ padding: "12px 14px" }}>{books.filter(b => getBookMemberId(b) === getMemberId(m) && isStatus(b, "Finished")).length}</td>
                       <td style={{ padding: "12px 14px" }}>
@@ -1899,7 +1991,7 @@ export default function App() {
         <Modal title="📬 Recommend a Book" ch={
           <div>
             <FL ch="Recommend to Member" />
-            <FS ch={members.map(m => <option key={m.id} value={getMemberName(m)}>{getMemberName(m)}</option>)} />
+            <FS ch={members.map(m => <option key={m.id || Math.random()} value={getMemberName(m)}>{getMemberName(m)}</option>)} />
             <FL ch="Book Title" /><FI value={recForm.bookTitle} onChange={e => setRecForm(r => ({ ...r, bookTitle: e.target.value }))} />
             <FL ch="Why are you recommending this?" /><FT value={recForm.note} onChange={e => setRecForm(r => ({ ...r, note: e.target.value }))} />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
@@ -1930,7 +2022,7 @@ export default function App() {
               <div style={{ textAlign: "center", minWidth: 120 }}>
                 <Av m={viewMember} size={80} />
                 <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, color: "#C9A84C", marginTop: 8 }}>{getMemberId(viewMember)}</div>
-                <div style={{ fontSize: 11, color: "var(--sub)", marginTop: 3 }}>{viewMember.city}, {viewMember.country}</div>
+                <div style={{ fontSize: 11, color: "var(--sub)", marginTop: 3 }}>{viewMember.city || "Agra"}, {viewMember.country || "India"}</div>
                 {viewMember.bio && <div style={{ fontSize: 11, color: "var(--sub)", fontStyle: "italic", marginTop: 7, lineHeight: 1.5 }}>"{viewMember.bio}"</div>}
                 <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 8 }}>
                   {viewMember.instagramlink && <a href={viewMember.instagramlink.startsWith("http") ? viewMember.instagramlink : `https://${viewMember.instagramlink}`} target="_blank" rel="noreferrer" style={{ fontSize: 18 }}>📸</a>}
