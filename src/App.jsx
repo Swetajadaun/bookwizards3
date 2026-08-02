@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 
 /* ═══════════════════════════════════════════════════════════════
-   📚 BOOK WIZARDS — v11 (MANDATORY FINISHED REVIEWS + UNIFIED CODE)
+   📚 BOOK WIZARDS — v10 (THE COMPLETE UNIFIED EDITION)
    ═══════════════════════════════════════════════════════════════ */
 
 const SUPABASE_URL = "https://nnxbappmomgnxqjtwaya.supabase.co";
@@ -228,7 +228,7 @@ function Stars({ v = 0, onChange, sz = 15 }) {
   );
 }
 
-/* ─── CHARTS ─────────────────────────────────────────────────*/
+/* ─── RESTORED CHART COMPONENTS (LINE & DONUT) ───────────────*/
 function LineChart({ data, c = "#C9A84C", h = 100 }) {
   const max = Math.max(...data.map(d => d.v), 1);
   if (data.length < 2) return null;
@@ -338,6 +338,8 @@ export default function App() {
   const [confirmDel, setConfirmDel] = useState(null);
   const [showProfEdit, setShowProfEdit] = useState(false);
   const [pe, setPe] = useState({});
+  const [welcomeMsg, setWelcomeMsg] = useState(false);
+  const [newMemberName, setNewMemberName] = useState("");
 
   /* ── QUOTES FEED (THE PENSIEVE) ── */
   const [quotes, setQuotes] = useState([
@@ -357,6 +359,8 @@ export default function App() {
   const [forums, setForums] = useState([
     { id: "p1", authorId: "BW001", title: "Thoughts on The God of Small Things?", body: "How did everyone interpret the ending chapters?", date: "1 Aug 2026", replies: [] }
   ]);
+  const [openPost, setOpenPost] = useState(null);
+  const [newReply, setNewReply] = useState("");
   const [showNewPost, setShowNewPost] = useState(false);
   const [newPost, setNewPost] = useState({ title: "", body: "", bookTitle: "" });
 
@@ -364,6 +368,7 @@ export default function App() {
   const [botm, setBotm] = useState(null);
   const [showRecommend, setShowRecommend] = useState(false);
   const [recForm, setRecForm] = useState({ toMemberId: "", bookTitle: "", bookAuthor: "", note: "" });
+  const [recommendations, setRecommendations] = useState([]);
   const [monthlyThemes, setMonthlyThemes] = useState(DEFAULT_THEMES);
   const [themeForm, setThemeForm] = useState({ emoji: "", title: "", desc: "" });
 
@@ -471,16 +476,8 @@ export default function App() {
     showToast(`Awesome! Streak updated to ${newStreak} ${newStreak === 1 ? "day" : "days in a row"}! 🔥`);
   }
 
-  /* ── MANDATORY REVIEW CHECK FOR FINISHED BOOKS ── */
   async function saveBook() {
     if (!bf.title) { showToast("Please enter a book title!", "error"); return; }
-
-    // MANDATORY REVIEW RULE:
-    if (bf.status === "Finished" && (!bf.review || !bf.review.trim())) {
-      showToast("Please share a quick review or reaction (even 1–2 words!) before marking as Finished ⭐", "error");
-      return;
-    }
-
     const tp = parseInt(bf.totalPages) || 0;
     const fp = parseInt(bf.finishedPages) || 0;
     const pct = tp > 0 ? Math.min(100, Math.round((fp / tp) * 100)) : 0;
@@ -563,6 +560,22 @@ export default function App() {
     const mf = books.filter(b => b.memberid === m.id && b.status === "Finished");
     return { ...m, bR: mf.length, pR: mf.reduce((a, b) => a + (parseInt(b.totalpages) || 0), 0) };
   }).sort((a, b) => b.bR - a.bR);
+
+  const upcomingBirthdays = members.filter(m => {
+    if (!m.birthdaymonth || !m.birthdaydate) return false;
+    const now = new Date();
+    const bday = new Date(now.getFullYear(), MONTHS.indexOf(m.birthdaymonth), parseInt(m.birthdaydate));
+    if (bday < now) bday.setFullYear(now.getFullYear() + 1);
+    const diff = (bday - now) / (1000 * 60 * 60 * 24);
+    return diff <= 30;
+  }).sort((a, b) => {
+    const now = new Date();
+    const d1 = new Date(now.getFullYear(), MONTHS.indexOf(a.birthdaymonth), parseInt(a.birthdaydate));
+    const d2 = new Date(now.getFullYear(), MONTHS.indexOf(b.birthdaymonth), parseInt(b.birthdaydate));
+    if (d1 < now) d1.setFullYear(now.getFullYear() + 1);
+    if (d2 < now) d2.setFullYear(now.getFullYear() + 1);
+    return d1 - d2;
+  });
 
   /* ── 3-SECTION CATEGORIZED SIDEBAR NAVIGATION ── */
   const NAV_SECTIONS = [
@@ -794,7 +807,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── MONTHLY SPELLS / COMMUNITY INSIGHTS ── */}
+        {/* ── MONTHLY SPELLS / COMMUNITY INSIGHTS (RESTORED FROM V7) ── */}
         {page === "monthly" && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 4 }}>Monthly Spells & Insights 🌙</h1>
@@ -969,7 +982,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── THE GREAT HALL (MEMBER DIRECTORY) ── */}
+        {/* ── THE GREAT HALL (MEMBER DIRECTORY - RESTORED FROM V7) ── */}
         {page === "greathall" && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>The Great Hall 🏰</h1>
@@ -993,7 +1006,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── CALENDAR & EVENTS ── */}
+        {/* ── CALENDAR & EVENTS (WITH BIRTHDAY WIZARD PHOTO & WRITTEN MESSAGE) ── */}
         {page === "calendar" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -1037,6 +1050,7 @@ export default function App() {
               </div>
             </div>
 
+            {/* SELECTED DAY INSPECTION DRAWER (SHOWING PHOTO & CUSTOM MESSAGE FOR BIRTHDAYS) */}
             <div style={{ ...card, padding: 20, background: "rgba(201,168,76,.04)", border: "1px solid rgba(201,168,76,.3)" }}>
               <h3 style={{ fontFamily: "'Cinzel',serif", fontSize: 16, color: "#C9A84C", marginBottom: 12 }}>
                 📍 Events for {selMonth} {selDay}, {YEAR}
@@ -1095,7 +1109,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── READING CHALLENGES ── */}
+        {/* ── READING CHALLENGES (RESTORED FROM V7) ── */}
         {page === "challenges" && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 4 }}>Reading Challenges 🏅</h1>
@@ -1124,7 +1138,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── LEADERBOARD ── */}
+        {/* ── LEADERBOARD (RESTORED FROM V7) ── */}
         {page === "leaderboard" && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Leaderboard 🏆</h1>
@@ -1141,7 +1155,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── YEARLY STATS ── */}
+        {/* ── YEARLY STATS (RESTORED WITH LINE & DONUT CHARTS FROM V7) ── */}
         {page === "yearly" && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Yearly Stats ⭐</h1>
@@ -1177,7 +1191,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── READING WRAPPED ── */}
+        {/* ── READING WRAPPED (RESTORED FROM V7) ── */}
         {page === "wrapped" && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Reading Wrapped 🎁</h1>
@@ -1196,7 +1210,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── READING TIMER ── */}
+        {/* ── READING TIMER (RESTORED FROM V7) ── */}
         {page === "timer" && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Reading Timer ⏱️</h1>
@@ -1225,7 +1239,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── ADMIN PANEL ── */}
+        {/* ── ADMIN PANEL (RESTORED FROM V7) ── */}
         {page === "admin" && user?.isadmin && (
           <div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Admin Panel ⚙️</h1>
@@ -1325,7 +1339,7 @@ export default function App() {
         } onClose={() => setShowThemeEdit(false)} />
       )}
 
-      {/* BOOK ADD/EDIT MODAL WITH REQUIRED FINISHED REVIEW LABEL */}
+      {/* BOOK ADD/EDIT MODAL (NOW WITH MOOD / POTION TAGS & NOT STARTED STATUS) */}
       {showBookMod && (
         <Modal title="✨ Add Book to Shelf" ch={
           <div>
@@ -1337,8 +1351,6 @@ export default function App() {
             <FL ch="Pages Read" /><FI type="number" value={bf.finishedPages} onChange={e => setBf(b => ({ ...b, finishedPages: e.target.value }))} />
             <FL ch="Status" />
             <FS ch={["Not Started", "Reading", "Finished"].map(s => <option key={s}>{s}</option>)} value={bf.status} onChange={e => setBf(b => ({ ...b, status: e.target.value }))} />
-            <FL ch={bf.status === "Finished" ? "Review / Thoughts * (Required for Finished books)" : "Review / Thoughts (optional)"} />
-            <FT value={bf.review} onChange={e => setBf(b => ({ ...b, review: e.target.value }))} placeholder={bf.status === "Finished" ? "Write at least a word or two about what you thought..." : "Your thoughts..."} />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
               <GB ch="Cancel" ghost onClick={() => setShowBookMod(false)} />
               <GB ch="Save Book 📚" onClick={saveBook} />
