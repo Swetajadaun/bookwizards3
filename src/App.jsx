@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 
 /* ═══════════════════════════════════════════════════════════════
-   📚 BOOK WIZARDS — v16 (BUILD SYNTAX FIX + COMPLETE FEATURES)
+   📚 BOOK WIZARDS — v18 (LOCKED BUDDIES, FOOLPROOF LOGIN & BOOK SAVING)
    ═══════════════════════════════════════════════════════════════ */
 
 const SUPABASE_URL = "https://nnxbappmomgnxqjtwaya.supabase.co";
@@ -13,6 +13,21 @@ const EJS_TEMPLATE = "YOUR_EMAILJS_TEMPLATE_ID";
 const EJS_KEY = "YOUR_EMAILJS_PUBLIC_KEY";
 
 const LOGO = "/logo.png";
+
+/* ─── LOCALSTORAGE HYDRATION HELPERS (0ms Instant Loading) ────*/
+function loadLocal(key, defaultVal) {
+  try {
+    const item = localStorage.getItem("BW_" + key);
+    return item ? JSON.parse(item) : defaultVal;
+  } catch (e) {
+    return defaultVal;
+  }
+}
+function saveLocal(key, val) {
+  try {
+    localStorage.setItem("BW_" + key, JSON.stringify(val));
+  } catch (e) { }
+}
 
 /* ─── SUPABASE ───────────────────────────────────────────────*/
 const SB_HEADERS = {
@@ -50,7 +65,7 @@ async function sbFetch(url, options = {}, retries = 2) {
 const SB = {
   async select(table) {
     const res = await sbFetch(`${SUPABASE_URL}/rest/v1/${table}?select=*&order=id.asc`, { headers: SB_HEADERS });
-    return res.ok && Array.isArray(res.data) ? res.data : [];
+    return res.ok && Array.isArray(res.data) ? res.data : null;
   },
   async insert(table, row) {
     return await sbFetch(`${SUPABASE_URL}/rest/v1/${table}`, {
@@ -153,11 +168,10 @@ const DEFAULT_THEMES = {
 };
 
 /* ─── SAFE SUPABASE FIELD GETTERS & ROBUST MONTH MATCHING ─────*/
-const getMemberId = (m) => m?.id || m?.ID || m?.memberid || m?.member_id || "";
+const getMemberId = (m) => String(m?.id || m?.ID || m?.memberid || m?.member_id || "").trim();
 const getMemberName = (m) => m?.name || m?.Name || m?.email || "Wizard";
-const getBookMemberId = (b) => b?.memberid || b?.memberId || b?.member_id || b?.user_id || b?.userid || "";
+const getBookMemberId = (b) => String(b?.memberid || b?.memberId || b?.member_id || b?.user_id || b?.userid || "").trim();
 const getBookPages = (b) => parseInt(b?.totalpages || b?.totalPages || b?.total_pages) || 0;
-const getBookFinishedPages = (b) => parseInt(b?.finishedpages || b?.finishedPages || b?.finished_pages) || 0;
 
 const matchMonth = (b, targetMonth) => {
   if (!b || !targetMonth) return false;
@@ -188,10 +202,14 @@ const nextId = ms => { const n = ms.map(m => parseInt((getMemberId(m) || "BW000"
 const rand = arr => arr[Math.floor(Math.random() * arr.length)];
 const today = () => new Date().toISOString().slice(0, 10);
 
-/* ─── MONTHLY BUDDY SHUFFLE & PAIRING DIRECTORY GENERATOR ────*/
+/* ─── 100% DETERMINISTIC MONTHLY BUDDY SHUFFLE (STRICTLY SORTED BY ID FIRST) ────*/
 function getMonthlyBuddy(userId, monthName, membersList) {
   if (!membersList || membersList.length <= 1) return null;
-  const otherMembers = membersList.filter(m => getMemberId(m) !== userId);
+  // Step 1: Strictly sort members alphabetically by unique ID so array order never changes
+  const sorted = [...membersList].sort((a, b) => getMemberId(a).localeCompare(getMemberId(b)));
+  const otherMembers = sorted.filter(m => getMemberId(m) !== userId);
+  if (otherMembers.length === 0) return null;
+  // Step 2: Use stable seed math
   const seedStr = userId + monthName + YEAR;
   let hash = 0;
   for (let i = 0; i < seedStr.length; i++) {
@@ -204,6 +222,7 @@ function getMonthlyBuddy(userId, monthName, membersList) {
 
 function getMonthlyBuddyPairs(monthName, membersList) {
   if (!membersList || membersList.length <= 1) return [];
+  // Step 1: Strictly sort members alphabetically by unique ID
   const sorted = [...membersList].sort((a, b) => getMemberId(a).localeCompare(getMemberId(b)));
   const seed = monthName.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) + YEAR;
   const shuffled = [...sorted];
@@ -337,6 +356,26 @@ function Stars({ v = 0, onChange, sz = 15 }) {
   );
 }
 
+/* ─── OBJECTIVE BRIEFING HEADER COMPONENT (ON EVERY TAB) ─────*/
+function PageHeader({ title, icon, briefing, action }) {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", display: "flex", alignItems: "center", gap: 8 }}>
+          <span>{icon}</span>
+          <span>{title}</span>
+        </h1>
+        {action}
+      </div>
+      {briefing && (
+        <p style={{ color: "var(--sub)", fontSize: 13, lineHeight: 1.5, background: "rgba(201,168,76,.04)", borderLeft: "2px solid #C9A84C", padding: "8px 12px", borderRadius: "0 8px 8px 0" }}>
+          {briefing}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ─── CHARTS ─────────────────────────────────────────────────*/
 function LineChart({ data, c = "#C9A84C", h = 100 }) {
   const max = Math.max(...data.map(d => d.v), 1);
@@ -421,18 +460,19 @@ function Confirm({ msg, onYes, onNo }) {
 ═══════════════════════════════════════════════════════════ */
 export default function App() {
   const [splash, setSplash] = useState(true);
-  const [screen, setScreen] = useState("login");
+  const [screen, setScreen] = useState(() => loadLocal("screen", "login"));
   const [loading, setLoading] = useState(false);
   const [welcomeMsg, setWelcomeMsg] = useState(false);
   const [newMemberName, setNewMemberName] = useState("");
 
-  const [page, setPage] = useState("dashboard");
-  const [user, setUser] = useState(null);
-  const [members, setMembers] = useState([]);
-  const [books, setBooks] = useState([]);
-  const [events, setEvents] = useState([
+  const [page, setPage] = useState(() => loadLocal("page", "dashboard"));
+  const [user, setUserState] = useState(() => loadLocal("user", null));
+  const [members, setMembersState] = useState(() => loadLocal("members", []));
+  const [books, setBooksState] = useState(() => loadLocal("books", []));
+  const [events, setEvents] = useState(() => loadLocal("events", [
     { id: "e1", month: "August", date: 15, title: "Friday Book Club Discussion", time: "6:00 PM", link: "https://meet.google.com/abc-defg-hij" }
-  ]);
+  ]));
+
   const [sideOpen, setSideOpen] = useState(true);
   const [shelfTab, setShelfTab] = useState("Reading");
   const [shelfSearch, setShelfSearch] = useState("");
@@ -459,36 +499,93 @@ export default function App() {
   const [photoPrev, setPhotoPrev] = useState("");
   const regCities = reg.state ? (STATE_CITIES[reg.state] || []).sort() : [];
 
-  const [quotes, setQuotes] = useState([
+  const [quotes, setQuotesState] = useState(() => loadLocal("quotes", [
     { id: "q1", authorName: "Albus Dumbledore", quote: "Words are, in my not-so-humble opinion, our most inexhaustible source of magic.", bookTitle: "Harry Potter", postedBy: "BW001", date: "August 2026" }
-  ]);
+  ]));
   const [newQuote, setNewQuote] = useState({ quote: "", bookTitle: "", authorName: "" });
   const [showQuoteMod, setShowQuoteMod] = useState(false);
 
-  const [userBingo, setUserBingo] = useState({});
+  const [userBingo, setUserBingoState] = useState(() => loadLocal("userBingo", {}));
   const [timerRunning, setTimerRunning] = useState(false);
   const [timerSecs, setTimerSecs] = useState(0);
   const [timerBook, setTimerBook] = useState("");
 
-  const [forums, setForums] = useState([
+  const [forums, setForumsState] = useState(() => loadLocal("forums", [
     { id: "p1", authorId: "BW001", title: "Thoughts on The God of Small Things?", body: "How did everyone interpret the ending chapters?", date: "1 Aug 2026", replies: [] }
-  ]);
+  ]));
   const [openPost, setOpenPost] = useState(null);
   const [newReply, setNewReply] = useState("");
   const [showNewPost, setShowNewPost] = useState(false);
   const [newPost, setNewPost] = useState({ title: "", body: "", bookTitle: "" });
 
-  const [completedChallenges, setCompletedChallenges] = useState([]);
-  const [botm, setBotm] = useState(null);
+  const [completedChallenges, setCompletedChallengesState] = useState(() => loadLocal("completedChallenges", []));
+  const [botm, setBotmState] = useState(() => loadLocal("botm", null));
   const [showRecommend, setShowRecommend] = useState(false);
   const [recForm, setRecForm] = useState({ toMemberId: "", bookTitle: "", bookAuthor: "", note: "" });
   const [recommendations, setRecommendations] = useState([]);
-  const [monthlyThemes, setMonthlyThemes] = useState(DEFAULT_THEMES);
+  const [monthlyThemes, setMonthlyThemesState] = useState(() => loadLocal("monthlyThemes", DEFAULT_THEMES));
   const [themeForm, setThemeForm] = useState({ emoji: "", title: "", desc: "" });
 
   const eBook = { title: "", author: "", genre: "Fiction", mood: "Cozy Potion ☕", origLang: "English", readLang: "English", totalPages: "", finishedPages: "", status: "Reading", rating: 0, review: "", customCover: "" };
   const [bf, setBf] = useState(eBook);
 
+  /* ── 0ms INSTANT SYNC WRAPPERS ── */
+  const setUser = (u) => { setUserState(u); saveLocal("user", u); };
+  const setMembers = (ms) => {
+    setMembersState(prev => {
+      const next = typeof ms === "function" ? ms(prev) : ms;
+      saveLocal("members", next);
+      return next;
+    });
+  };
+  const setBooks = (bs) => {
+    setBooksState(prev => {
+      const next = typeof bs === "function" ? bs(prev) : bs;
+      saveLocal("books", next);
+      return next;
+    });
+  };
+  const setQuotes = (qs) => {
+    setQuotesState(prev => {
+      const next = typeof qs === "function" ? qs(prev) : qs;
+      saveLocal("quotes", next);
+      return next;
+    });
+  };
+  const setForums = (fs) => {
+    setForumsState(prev => {
+      const next = typeof fs === "function" ? fs(prev) : fs;
+      saveLocal("forums", next);
+      return next;
+    });
+  };
+  const setUserBingo = (ub) => {
+    setUserBingoState(prev => {
+      const next = typeof ub === "function" ? ub(prev) : ub;
+      saveLocal("userBingo", next);
+      return next;
+    });
+  };
+  const setCompletedChallenges = (cc) => {
+    setCompletedChallengesState(prev => {
+      const next = typeof cc === "function" ? cc(prev) : cc;
+      saveLocal("completedChallenges", next);
+      return next;
+    });
+  };
+  const setBotm = (val) => { setBotmState(val); saveLocal("botm", val); };
+  const setMonthlyThemes = (mt) => {
+    setMonthlyThemesState(prev => {
+      const next = typeof mt === "function" ? mt(prev) : mt;
+      saveLocal("monthlyThemes", next);
+      return next;
+    });
+  };
+
+  useEffect(() => { saveLocal("page", page); }, [page]);
+  useEffect(() => { saveLocal("screen", screen); }, [screen]);
+
+  /* ── FILTERED BOOK LISTS & TARGETS ── */
   const myBooks = useMemo(() => books.filter(b => getBookMemberId(b) === getMemberId(user)), [books, user]);
   const fin = useMemo(() => myBooks.filter(b => isStatus(b, "Finished")), [myBooks]);
   const rdg = useMemo(() => myBooks.filter(b => isStatus(b, "Reading")), [myBooks]);
@@ -509,19 +606,23 @@ export default function App() {
     return getMonthlyBuddyPairs(selMonth, members);
   }, [selMonth, members]);
 
-  /* ── LIVE DAILY DISPATCH (REPLACES IRRITATING TICKER) ── */
-  const activeWizardsToday = useMemo(() => {
-    const td = today();
-    const yd = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-    return members.filter(m => m.last_checkin === td || m.last_checkin === yd).length;
+  /* ── ROTATING AUTHOR QUOTE ON LOGIN ── */
+  const [quoteIdx, setQuoteIdx] = useState(0);
+  useEffect(() => {
+    const qTimer = setInterval(() => {
+      setQuoteIdx(i => (i + 1) % QUOTES.length);
+    }, 4500);
+    return () => clearInterval(qTimer);
+  }, []);
+
+  /* ── BIRTHDAY ALERTS (ONLY SHOWS BIRTHDAY ON TOP RIBBON) ── */
+  const birthdaysToday = useMemo(() => {
+    const tdMonth = MONTHS[new Date().getMonth()];
+    const tdDay = new Date().getDate();
+    return members.filter(m => m.birthdaymonth === tdMonth && parseInt(m.birthdaydate) === tdDay);
   }, [members]);
 
-  const recentMilestone = useMemo(() => {
-    const latestFin = books.filter(b => isStatus(b, "Finished")).slice(-1)[0];
-    if (latestFin) return `🎉 ${latestFin.membername || "A wizard"} just finished "${latestFin.title}"!`;
-    return `✨ ${activeWizardsToday} wizards have checked in their reading today!`;
-  }, [books, activeWizardsToday]);
-
+  /* ── TIMER EFFECT ── */
   useEffect(() => {
     let interval;
     if (timerRunning) { interval = setInterval(() => setTimerSecs(s => s + 1), 1000); }
@@ -530,12 +631,14 @@ export default function App() {
 
   const fmtTimer = s => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
+  /* ── BACKGROUND SUPABASE SYNC (0ms HYDRATION) ── */
   const loadData = useCallback(async () => {
     if (!USE_SB) return;
     try {
       const [ms, bs] = await Promise.all([SB.select("members"), SB.select("books")]);
-      setMembers(ms); setBooks(bs);
-      if (user) {
+      if (ms && ms.length > 0) setMembers(ms);
+      if (bs && bs.length > 0) setBooks(bs);
+      if (user && ms) {
         const fresh = ms.find(m => getMemberId(m) === getMemberId(user));
         if (fresh) setUser(fresh);
       }
@@ -560,14 +663,16 @@ export default function App() {
   async function doLogin() {
     setLoading(true); setLoginErr("");
     try {
-      const [freshMembers, freshBooks] = await Promise.all([
-        SB.select("members"),
-        SB.select("books")
-      ]);
-      setMembers(freshMembers);
-      setBooks(freshBooks);
+      let lm = members;
+      if (USE_SB) {
+        const freshMembers = await SB.select("members");
+        if (freshMembers && freshMembers.length > 0) {
+          lm = freshMembers;
+          setMembers(lm);
+        }
+      }
       const email = loginEmail.toLowerCase().trim();
-      const found = freshMembers.find(m => (m.email || m.Email || "").toLowerCase().trim() === email);
+      const found = lm.find(m => (m.email || m.Email || "").toLowerCase().trim() === email);
       if (!found) {
         setLoginErr("⚡ No wizard found with that email. Please Request Admission below!");
         setLoading(false);
@@ -589,7 +694,10 @@ export default function App() {
     if (!reg.photo) { setRegErr("Please upload your photo."); return; }
     setLoading(true);
     let lm = members;
-    if (USE_SB) { lm = await SB.select("members"); setMembers(lm); }
+    if (USE_SB) {
+      const res = await SB.select("members");
+      if (res) { lm = res; setMembers(lm); }
+    }
     if (lm.find(m => (m.email || m.Email || "").toLowerCase() === reg.email.toLowerCase())) {
       setRegErr("Email already registered!"); setLoading(false); return;
     }
@@ -733,6 +841,28 @@ export default function App() {
     return Math.round((active / members.length) * 100);
   }, [members, books]);
 
+  /* ── COMMUNITY HONOR RIBBONS (CELEBRATING STEADY/CONSISTENT READERS) ── */
+  const honorRibbons = useMemo(() => {
+    if (!members.length) return [];
+    const highestStreak = [...members].sort((a, b) => (parseInt(b.streak_count) || 0) - (parseInt(a.streak_count) || 0))[0];
+    const topContributor = [...members].sort((a, b) => {
+      const aQ = quotes.filter(q => q.postedBy === getMemberId(a)).length;
+      const bQ = quotes.filter(q => q.postedBy === getMemberId(b)).length;
+      return bQ - aQ;
+    })[0];
+    const mostSteady = [...members].sort((a, b) => {
+      const aP = books.filter(bk => getBookMemberId(bk) === getMemberId(a)).reduce((sum, bk) => sum + getBookPages(bk), 0);
+      const bP = books.filter(bk => getBookMemberId(bk) === getMemberId(b)).reduce((sum, bk) => sum + getBookPages(bk), 0);
+      return bP - aP;
+    })[0];
+
+    return [
+      { title: "🔥 The Consistency Crown", member: highestStreak, desc: `${highestStreak?.streak_count || 0} consecutive days logged` },
+      { title: "✨ The Pensieve Laureate", member: topContributor, desc: "Shared the most thoughts & quotes" },
+      { title: "🌱 Steady Traveler", member: mostSteady, desc: "Dedicated page-by-page progress" }
+    ];
+  }, [members, quotes, books]);
+
   const NAV_SECTIONS = [
     {
       group: "📖 MY STUDY",
@@ -796,7 +926,7 @@ export default function App() {
   );
 
   if (screen !== "app") {
-    const quoteOfDay = QUOTES[new Date().getDate() % QUOTES.length];
+    const quoteOfDay = QUOTES[quoteIdx % QUOTES.length];
     return (
       <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
         <style>{css}</style>
@@ -811,7 +941,8 @@ export default function App() {
             <div style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", letterSpacing: 2, animation: "glw 3s infinite" }}>BOOK WIZARDS</div>
             <div style={{ fontSize: 11, color: "var(--sub)", marginTop: 3, letterSpacing: 3, fontFamily: "'Cinzel',serif" }}>READING · MAGIC · COMMUNITY</div>
 
-            <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(255,255,255,.03)", border: "1px solid rgba(201,168,76,.15)", borderRadius: 10 }}>
+            {/* ── ROTATING AUTHOR QUOTE ON LOGIN ── */}
+            <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(255,255,255,.03)", border: "1px solid rgba(201,168,76,.15)", borderRadius: 10, minHeight: 64, display: "flex", flexDirection: "column", justifyContent: "center" }}>
               <div style={{ fontSize: 13, fontStyle: "italic", color: "rgba(255,255,255,.7)", lineHeight: 1.5 }}>"{quoteOfDay.q}"</div>
               <div style={{ fontSize: 11, color: "#C9A84C", marginTop: 4 }}>— {quoteOfDay.a}</div>
             </div>
@@ -919,27 +1050,27 @@ export default function App() {
       {/* ── MAIN CONTENT AREA ── */}
       <div style={{ marginLeft: sideOpen ? 230 : 60, flex: 1, padding: "26px 30px", transition: "margin-left .22s ease" }}>
 
-        {/* ✨ TODAY'S DAILY DISPATCH */}
-        <div style={{ background: "linear-gradient(90deg,rgba(201,168,76,.15),rgba(201,168,76,.03))", border: "1px solid rgba(201,168,76,.3)", borderRadius: 12, padding: "12px 18px", marginBottom: 22, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 20 }}>✨</span>
-            <div>
-              <div style={{ fontSize: 10, color: "var(--mut)", letterSpacing: 1, textTransform: "uppercase" }}>TODAY'S DAILY DISPATCH</div>
-              <div style={{ fontFamily: "'Cinzel',serif", fontSize: 14, color: "#C9A84C", fontWeight: 600 }}>{recentMilestone}</div>
+        {/* TOP RIBBON — BIRTHDAY CELEBRATIONS ONLY */}
+        {birthdaysToday.length > 0 && (
+          <div style={{ background: "linear-gradient(90deg,rgba(201,168,76,.2),rgba(201,168,76,.05))", border: "1px solid rgba(201,168,76,.4)", borderRadius: 12, padding: "12px 18px", marginBottom: 22, display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 24 }}>🎂</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, color: "#C9A84C", fontWeight: "bold", letterSpacing: 1 }}>TODAY'S BIRTHDAY CELEBRATION</div>
+              <div style={{ fontFamily: "'Cinzel',serif", fontSize: 15, color: "var(--text)" }}>
+                Happy Birthday to {birthdaysToday.map(m => getMemberName(m)).join(", ")}! Wish them a magical reading year! ✨
+              </div>
             </div>
           </div>
-          <button onClick={() => checkinToday()} style={{ background: "#C9A84C", color: "#000", border: "none", padding: "6px 14px", borderRadius: 8, fontWeight: "bold", cursor: "pointer", fontSize: 12, fontFamily: "'Cinzel',serif" }}>
-            ✅ I Read Today
-          </button>
-        </div>
+        )}
 
         {/* ── DASHBOARD ── */}
         {page === "dashboard" && (
           <div>
-            <div style={{ marginBottom: 20 }}>
-              <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C" }}>My Dashboard 📖</h1>
-              <p style={{ color: "var(--sub)", fontSize: 14, fontStyle: "italic" }}>"{rand(QUOTES).q}"</p>
-            </div>
+            <PageHeader
+              title="My Dashboard"
+              icon="📖"
+              briefing="Your personal command center. Track your yearly target, monitor active books, and check in your daily reading."
+            />
 
             {currentBuddy && (
               <div onClick={() => setPage("buddy")} style={{ background: "var(--card2)", border: "1px solid rgba(201,168,76,.4)", borderRadius: 14, padding: 16, marginBottom: 18, display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}>
@@ -997,16 +1128,20 @@ export default function App() {
           </div>
         )}
 
-        {/* ── MY BOOKSHELF (TO BE READ, READING, FINISHED, DNF) ── */}
+        {/* ── MY BOOKSHELF ── */}
         {page === "myshelf" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C" }}>My Bookshelf 📚</h1>
-              <div style={{ display: "flex", gap: 10 }}>
-                <GB ch="📬 Recommend Book" sm ghost onClick={() => setShowRecommend(true)} />
-                <GB ch="+ Add Book" sm onClick={() => { setBf(eBook); setEditBook(null); setShowBookMod(true); }} />
-              </div>
-            </div>
+            <PageHeader
+              title="My Bookshelf"
+              icon="📚"
+              briefing="Manage your personal library. Categorize books by Reading, Finished, To Be Read, or DNF. Sharing a quick review is mandatory when marking a book Finished!"
+              action={
+                <div style={{ display: "flex", gap: 10 }}>
+                  <GB ch="📬 Recommend Book" sm ghost onClick={() => setShowRecommend(true)} />
+                  <GB ch="+ Add Book" sm onClick={() => { setBf(eBook); setEditBook(null); setShowBookMod(true); }} />
+                </div>
+              }
+            />
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1044,11 +1179,104 @@ export default function App() {
           </div>
         )}
 
+        {/* ── DAILY STREAK PAGE ── */}
+        {page === "streak" && (
+          <div>
+            <PageHeader
+              title="Daily Streak"
+              icon="🔥"
+              briefing="Build a lifelong reading habit. Logging even 1 page a day keeps your streak alive and earns Consistency Honors!"
+            />
+            <div style={{ ...card, padding: 30, textAlign: "center", marginBottom: 20 }}>
+              <div style={{ fontSize: 50, marginBottom: 10 }}>🔥</div>
+              <div style={{ fontFamily: "'Cinzel',serif", fontSize: 32, color: "#C9A84C" }}>{user.streak_count || 0} Days in a Row</div>
+              <p style={{ color: "var(--sub)", fontSize: 13, margin: "10px 0 20px" }}>Consistency counts more than speed! Log at least 1 page a day.</p>
+              <GB ch="✅ Log Today's Reading" onClick={() => checkinToday()} />
+            </div>
+          </div>
+        )}
+
+        {/* ── READING TIMER ── */}
+        {page === "timer" && (
+          <div>
+            <PageHeader
+              title="Reading Timer"
+              icon="⏱️"
+              briefing="Use the Pomodoro technique (25 min reading, 5 min break) for deep focus. Track exactly how much time you dedicate to each chapter."
+            />
+            <div style={{ ...card, padding: 30, textAlign: "center", maxWidth: 480, margin: "0 auto" }}>
+              <div style={{ fontFamily: "'Cinzel',serif", fontSize: 48, color: "#C9A84C", marginBottom: 20 }}>{fmtTimer(timerSecs)}</div>
+              <FI value={timerBook} onChange={e => setTimerBook(e.target.value)} placeholder="What book are you reading?" style={{ marginBottom: 20 }} />
+              <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
+                {!timerRunning ? <GB ch="▶ Start" onClick={() => setTimerRunning(true)} /> : <GB ch="⏸ Pause" ghost onClick={() => setTimerRunning(false)} />}
+                <GB ch="⏹ Reset" ghost onClick={() => { setTimerRunning(false); setTimerSecs(0); }} />
+                {timerSecs > 0 && !timerRunning && <GB ch="✅ Log Session" onClick={() => { showToast(`Logged ${fmtTimer(timerSecs)} reading! 📚`); setTimerSecs(0); }} />}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── MY MONTHLY BUDDY (`📖 MY STUDY`) ── */}
+        {page === "buddy" && (
+          <div>
+            <PageHeader
+              title="My Monthly Buddy"
+              icon="🤝"
+              briefing="Every month, you are randomly paired with a club wizard! Connect, pick a shared book, and discuss your reading journeys together."
+              action={
+                <FS ch={MONTHS.map(m => <option key={m}>{m}</option>)} value={selMonth} onChange={e => setSelMonth(e.target.value)} style={{ width: 140, marginBottom: 0 }} />
+              }
+            />
+
+            {currentBuddy ? (
+              <div style={{ ...card, padding: 24, textAlign: "center", maxWidth: 580, margin: "0 auto" }}>
+                <div style={{ fontSize: 11, color: "var(--sub)", letterSpacing: 2, marginBottom: 12 }}>YOUR ASSIGNED BUDDY FOR {selMonth.toUpperCase()}</div>
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}><Av m={currentBuddy} size={84} /></div>
+                <div style={{ fontFamily: "'Cinzel',serif", fontSize: 22, color: "#C9A84C" }}>{getMemberName(currentBuddy)}</div>
+                <div style={{ fontSize: 12, color: "var(--sub)", marginBottom: 18 }}>📍 {currentBuddy.city}, {currentBuddy.country}</div>
+
+                <div style={{ background: "var(--card2)", borderRadius: 12, padding: 16, textAlign: "left", marginBottom: 18, border: "1px solid var(--bdr)" }}>
+                  <div style={{ fontSize: 11, fontWeight: "bold", color: "#C9A84C", marginBottom: 6, textTransform: "uppercase" }}>📖 What your buddy is reading right now:</div>
+                  {books.filter(b => getBookMemberId(b) === getMemberId(currentBuddy) && isStatus(b, "Reading")).slice(0, 2).map(b => (
+                    <div key={b.id} style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8 }}>
+                      <Cover title={b.title} size={32} r={4} />
+                      <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontFamily: "'Cinzel',serif" }}>{b.title}</div><div style={{ fontSize: 11, color: "var(--sub)" }}>{b.author}</div></div>
+                      <span style={{ fontSize: 11, color: "#6B9FD4" }}>{b.pct}%</span>
+                    </div>
+                  ))}
+                  {books.filter(b => getBookMemberId(b) === getMemberId(currentBuddy) && isStatus(b, "Reading")).length === 0 && (
+                    <div style={{ fontSize: 12, color: "var(--mut)" }}>No book logged yet for this month. Send an owl to pick a book together!</div>
+                  )}
+                </div>
+
+                {/* ── BUDDY ICEBREAKER HANDBOOK ── */}
+                <div style={{ background: "rgba(201,168,76,.05)", border: "1px dashed rgba(201,168,76,.3)", borderRadius: 12, padding: 14, textAlign: "left", marginBottom: 18 }}>
+                  <div style={{ fontSize: 11, fontWeight: "bold", color: "#C9A84C", marginBottom: 6 }}>💡 BUDDY DISCUSSION STARTERS:</div>
+                  <ul style={{ paddingLeft: 18, fontSize: 12, color: "var(--sub)", lineHeight: 1.6 }}>
+                    <li>"What were your first impressions of chapter 1?"</li>
+                    <li>"Which character do you relate to the most so far?"</li>
+                    <li>"Did that plot twist surprise you, or did you see it coming?"</li>
+                    <li>"What potion/mood tag would you give this book?"</li>
+                  </ul>
+                </div>
+
+                <GB ch={`💬 Start Discussion with ${getMemberName(currentBuddy).split(" ")[0]}`} full onClick={() => {
+                  setNewPost({ title: `🤝 ${selMonth} Buddy Read: [Our Book Title]`, body: `Hey @${getMemberName(currentBuddy)}! Which book should we pick together for this month?`, bookTitle: "" });
+                  setShowNewPost(true); setPage("forum");
+                }} />
+              </div>
+            ) : <Nil icon="🤝" msg="Add more wizards to the club to enable monthly buddy pairing!" />}
+          </div>
+        )}
+
         {/* ── MONTHLY SPELLS / COMMUNITY INSIGHTS ── */}
         {page === "monthly" && (
           <div>
-            <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 4 }}>Monthly Spells & Insights 🌙</h1>
-            <p style={{ color: "var(--sub)", fontSize: 13, marginBottom: 16 }}>Community reading magic and stats by month</p>
+            <PageHeader
+              title="Monthly Spells & Insights"
+              icon="🌙"
+              briefing="Explore collective club momentum! Compare monthly statistics, cheer on Most Improved members, and see top genres."
+            />
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 20 }}>
               {MONTHS.map(m => <button key={m} onClick={() => setSelMonth(m)} style={{ padding: "5px 11px", borderRadius: 16, border: "1px solid", fontSize: 11, cursor: "pointer", borderColor: selMonth === m ? "#C9A84C" : "var(--bdr)", background: selMonth === m ? "rgba(201,168,76,.1)" : "transparent", color: selMonth === m ? "#C9A84C" : "var(--sub)" }}>{m.slice(0, 3)}</button>)}
             </div>
@@ -1122,13 +1350,12 @@ export default function App() {
         {/* ── THE PENSIEVE (QUOTE FEED) ── */}
         {page === "quotes" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <div>
-                <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C" }}>The Pensieve ✨</h1>
-                <p style={{ color: "var(--sub)", fontSize: 13, marginTop: 4 }}>Share a favorite line or quote from your current read in 10 seconds.</p>
-              </div>
-              <GB ch="+ Drop a Quote" sm onClick={() => setShowQuoteMod(true)} />
-            </div>
+            <PageHeader
+              title="The Pensieve"
+              icon="✨"
+              briefing="A low-pressure sanctuary to share favorite lines or sentences from your current book in 10 seconds."
+              action={<GB ch="+ Drop a Quote" sm onClick={() => setShowQuoteMod(true)} />}
+            />
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {quotes.map(q => {
                 const author = members.find(m => getMemberId(m) === q.postedBy);
@@ -1146,57 +1373,17 @@ export default function App() {
           </div>
         )}
 
-        {/* ── MY MONTHLY BUDDY (`📖 MY STUDY` -> `id: "buddy"`) ── */}
-        {page === "buddy" && (
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <div>
-                <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C" }}>My Monthly Buddy 🤝</h1>
-                <p style={{ color: "var(--sub)", fontSize: 13, marginTop: 4 }}>Your personal assigned reading partner for {selMonth}!</p>
-              </div>
-              <FS ch={MONTHS.map(m => <option key={m}>{m}</option>)} value={selMonth} onChange={e => setSelMonth(e.target.value)} style={{ width: 140, marginBottom: 0 }} />
-            </div>
-
-            {currentBuddy ? (
-              <div style={{ ...card, padding: 24, textAlign: "center", maxWidth: 520, margin: "0 auto" }}>
-                <div style={{ fontSize: 11, color: "var(--sub)", letterSpacing: 2, marginBottom: 12 }}>YOUR ASSIGNED BUDDY FOR {selMonth.toUpperCase()}</div>
-                <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}><Av m={currentBuddy} size={84} /></div>
-                <div style={{ fontFamily: "'Cinzel',serif", fontSize: 22, color: "#C9A84C" }}>{getMemberName(currentBuddy)}</div>
-                <div style={{ fontSize: 12, color: "var(--sub)", marginBottom: 18 }}>📍 {currentBuddy.city}, {currentBuddy.country}</div>
-
-                <div style={{ background: "var(--card2)", borderRadius: 12, padding: 16, textAlign: "left", marginBottom: 18, border: "1px solid var(--bdr)" }}>
-                  <div style={{ fontSize: 11, fontWeight: "bold", color: "#C9A84C", marginBottom: 6, textTransform: "uppercase" }}>📖 What your buddy is reading right now:</div>
-                  {books.filter(b => getBookMemberId(b) === getMemberId(currentBuddy) && isStatus(b, "Reading")).slice(0, 2).map(b => (
-                    <div key={b.id} style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8 }}>
-                      <Cover title={b.title} size={32} r={4} />
-                      <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontFamily: "'Cinzel',serif" }}>{b.title}</div><div style={{ fontSize: 11, color: "var(--sub)" }}>{b.author}</div></div>
-                      <span style={{ fontSize: 11, color: "#6B9FD4" }}>{b.pct}%</span>
-                    </div>
-                  ))}
-                  {books.filter(b => getBookMemberId(b) === getMemberId(currentBuddy) && isStatus(b, "Reading")).length === 0 && (
-                    <div style={{ fontSize: 12, color: "var(--mut)" }}>No book logged yet for this month. Send an owl to pick a book together!</div>
-                  )}
-                </div>
-
-                <GB ch={`💬 Start Discussion with ${getMemberName(currentBuddy).split(" ")[0]}`} full onClick={() => {
-                  setNewPost({ title: `🤝 ${selMonth} Buddy Read: [Our Book Title]`, body: `Hey @${getMemberName(currentBuddy)}! Which book should we pick together for this month?`, bookTitle: "" });
-                  setShowNewPost(true); setPage("forum");
-                }} />
-              </div>
-            ) : <Nil icon="🤝" msg="Add more wizards to the club to enable monthly buddy pairing!" />}
-          </div>
-        )}
-
-        {/* ── CLUB BUDDY PAIRS (`🏰 THE GREAT HALL` -> `id: "clubbuddies"`) ── */}
+        {/* ── CLUB BUDDY PAIRS (`🏰 THE GREAT HALL`) ── */}
         {page === "clubbuddies" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <div>
-                <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C" }}>Club Buddy Pairs 🤝</h1>
-                <p style={{ color: "var(--sub)", fontSize: 13, marginTop: 4 }}>Every paired couple in the community for {selMonth}!</p>
-              </div>
-              <FS ch={MONTHS.map(m => <option key={m}>{m}</option>)} value={selMonth} onChange={e => setSelMonth(e.target.value)} style={{ width: 140, marginBottom: 0 }} />
-            </div>
+            <PageHeader
+              title="Club Buddy Pairs"
+              icon="🤝"
+              briefing="See every paired reading couple across the entire community for the selected month."
+              action={
+                <FS ch={MONTHS.map(m => <option key={m}>{m}</option>)} value={selMonth} onChange={e => setSelMonth(e.target.value)} style={{ width: 140, marginBottom: 0 }} />
+              }
+            />
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14 }}>
               {allMonthBuddyPairs.map((pair, idx) => (
@@ -1220,10 +1407,23 @@ export default function App() {
         {/* ── FORUM ── */}
         {page === "forum" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 18 }}>
-              <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C" }}>Discussion Forum 💬</h1>
-              <GB ch="+ New Discussion" sm onClick={() => setShowNewPost(true)} />
+            <PageHeader
+              title="Discussion Forum"
+              icon="💬"
+              briefing="Ask questions, debate plot twists, or share book reviews with the entire club."
+              action={<GB ch="+ New Discussion" sm onClick={() => setShowNewPost(true)} />}
+            />
+
+            {/* ── FORUM PROMPT STARTERS GUIDE ── */}
+            <div style={{ background: "var(--card2)", border: "1px solid var(--bdr)", borderRadius: 12, padding: 14, marginBottom: 18 }}>
+              <div style={{ fontSize: 11, fontWeight: "bold", color: "#C9A84C", marginBottom: 6 }}>💬 GREAT FORUM INITIATING TOPICS:</div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12 }}>
+                <span style={{ background: "rgba(201,168,76,.1)", padding: "4px 10px", borderRadius: 6, color: "var(--text)" }}>"Did you prefer the ending of X or Y?"</span>
+                <span style={{ background: "rgba(201,168,76,.1)", padding: "4px 10px", borderRadius: 6, color: "var(--text)" }}>"What book changed your perspective on life?"</span>
+                <span style={{ background: "rgba(201,168,76,.1)", padding: "4px 10px", borderRadius: 6, color: "var(--text)" }}>"Unpopular opinion: [Book Title] was overrated!"</span>
+              </div>
             </div>
+
             {forums.map((p, i) => (
               <div key={i} style={{ ...card, padding: 16, marginBottom: 10 }}>
                 <div style={{ fontFamily: "'Cinzel',serif", fontSize: 15, color: "var(--text)" }}>{p.title}</div>
@@ -1237,7 +1437,11 @@ export default function App() {
         {/* ── BOOK REVIEWS ── */}
         {page === "reviews" && (
           <div>
-            <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Book Reviews 🌟</h1>
+            <PageHeader
+              title="Book Reviews"
+              icon="🌟"
+              briefing="Every mandatory reaction and thought shared by wizards upon marking a book as Finished."
+            />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14 }}>
               {books.filter(b => isStatus(b, "Finished") && b.review).map(b => (
                 <div key={b.id} style={{ ...card, padding: 16 }}>
@@ -1253,10 +1457,32 @@ export default function App() {
           </div>
         )}
 
-        {/* ── THE GREAT HALL (MEMBER DIRECTORY) ── */}
+        {/* ── THE GREAT HALL (MEMBER DIRECTORY & HONOR RIBBONS) ── */}
         {page === "greathall" && (
           <div>
-            <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>The Great Hall 🏰</h1>
+            <PageHeader
+              title="The Great Hall"
+              icon="🏰"
+              briefing="The complete directory of wizards. Inspect member profiles, see active reading shelves, and celebrate Community Honors!"
+            />
+
+            {/* ── COMMUNITY HONOR RIBBONS ── */}
+            <div style={{ marginBottom: 22 }}>
+              <SH ch="🎖️ Community Honor Ribbons" />
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
+                {honorRibbons.map((ribbon, i) => (
+                  <div key={i} style={{ ...card, padding: 14, background: "linear-gradient(135deg,#161109,#1F180E)", border: "1px solid rgba(201,168,76,.3)", display: "flex", alignItems: "center", gap: 12 }}>
+                    <Av m={ribbon.member} size={44} />
+                    <div style={{ overflow: "hidden" }}>
+                      <div style={{ fontSize: 10, color: "#C9A84C", fontWeight: "bold", letterSpacing: 1 }}>{ribbon.title}</div>
+                      <div style={{ fontFamily: "'Cinzel',serif", fontSize: 14, color: "var(--text)", fontWeight: "bold" }}>{getMemberName(ribbon.member)}</div>
+                      <div style={{ fontSize: 11, color: "var(--sub)", marginTop: 2 }}>{ribbon.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: 14 }}>
               {members.map(m => {
                 const mId = getMemberId(m);
@@ -1281,13 +1507,17 @@ export default function App() {
         {/* ── CALENDAR & EVENTS ── */}
         {page === "calendar" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C" }}>Calendar & Events 📅</h1>
-              <div style={{ display: "flex", gap: 8 }}>
-                {user?.isadmin && <GB ch="+ Add Club Event" sm onClick={() => setShowEventMod(true)} />}
-                {user?.isadmin && <GB ch="🎨 Edit Theme" sm ghost onClick={() => { setThemeForm(monthlyThemes[selMonth] || DEFAULT_THEMES[selMonth]); setShowThemeEdit(true); }} />}
-              </div>
-            </div>
+            <PageHeader
+              title="Calendar & Events"
+              icon="📅"
+              briefing="Keep track of monthly spell themes, upcoming member birthdays, and official book club video meetings."
+              action={
+                <div style={{ display: "flex", gap: 8 }}>
+                  {user?.isadmin && <GB ch="+ Add Club Event" sm onClick={() => setShowEventMod(true)} />}
+                  {user?.isadmin && <GB ch="🎨 Edit Theme" sm ghost onClick={() => { setThemeForm(monthlyThemes[selMonth] || DEFAULT_THEMES[selMonth]); setShowThemeEdit(true); }} />}
+                </div>
+              }
+            />
 
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 16 }}>
               {MONTHS.map(m => <button key={m} onClick={() => setSelMonth(m)} style={{ padding: "5px 11px", borderRadius: 16, border: "1px solid", fontSize: 11, cursor: "pointer", borderColor: selMonth === m ? "#C9A84C" : "var(--bdr)", background: selMonth === m ? "rgba(201,168,76,.1)" : "transparent", color: selMonth === m ? "#C9A84C" : "var(--sub)" }}>{m.slice(0, 3)}</button>)}
@@ -1364,18 +1594,19 @@ export default function App() {
         {/* ── 4x4 INTERACTIVE BOOK BINGO ── */}
         {page === "bingo" && (
           <div>
-            <div style={{ marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C" }}>Book Bingo (4x4) 🎯</h1>
-                <p style={{ color: "var(--sub)", fontSize: 13, marginTop: 4 }}>Tap squares as you complete mini reading spells across the year!</p>
-              </div>
-              <div style={{ padding: "8px 14px", background: "var(--card2)", border: "1px solid rgba(201,168,76,.3)", borderRadius: 12 }}>
-                <span style={{ fontSize: 11, color: "var(--sub)", textTransform: "uppercase" }}>Progress: </span>
-                <span style={{ fontFamily: "'Cinzel',serif", fontSize: 16, color: "#C9A84C", fontWeight: "bold" }}>
-                  {Object.values(userBingo[getMemberId(user)] || {}).filter(Boolean).length} / 16
-                </span>
-              </div>
-            </div>
+            <PageHeader
+              title="Book Bingo (4x4)"
+              icon="🎯"
+              briefing="Complete mini reading spells at your own pace! Tap a square to stamp it with a gold wax seal. How many lines of 4 can you complete this year?"
+              action={
+                <div style={{ padding: "8px 14px", background: "var(--card2)", border: "1px solid rgba(201,168,76,.3)", borderRadius: 12 }}>
+                  <span style={{ fontSize: 11, color: "var(--sub)", textTransform: "uppercase" }}>Progress: </span>
+                  <span style={{ fontFamily: "'Cinzel',serif", fontSize: 16, color: "#C9A84C", fontWeight: "bold" }}>
+                    {Object.values(userBingo[getMemberId(user)] || {}).filter(Boolean).length} / 16
+                  </span>
+                </div>
+              }
+            />
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, maxWidth: 660, margin: "0 auto" }}>
               {BINGO_SQUARES.map((square, i) => {
@@ -1395,8 +1626,11 @@ export default function App() {
         {/* ── READING CHALLENGES ── */}
         {page === "challenges" && (
           <div>
-            <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 4 }}>Reading Challenges 🏅</h1>
-            <p style={{ color: "var(--sub)", fontSize: 13, marginBottom: 16 }}>Complete challenges to earn points and badges</p>
+            <PageHeader
+              title="Reading Challenges"
+              icon="🏅"
+              briefing="Special quests to diversify your reading palette. Complete challenges to earn badges and climb the points leaderboard!"
+            />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 14 }}>
               {CHALLENGES.map(ch => {
                 const done = completedChallenges.some(c => c.memberId === getMemberId(user) && c.challengeId === ch.id);
@@ -1421,10 +1655,31 @@ export default function App() {
           </div>
         )}
 
-        {/* ── LEADERBOARD ── */}
+        {/* ── LEADERBOARD (WITH HONOR RIBBONS INCLUDED) ── */}
         {page === "leaderboard" && (
           <div>
-            <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Leaderboard 🏆</h1>
+            <PageHeader
+              title="Leaderboard"
+              icon="🏆"
+              briefing="Celebrate community reading achievements. Alongside total books finished, check out our Consistency and Scribe Honors!"
+            />
+
+            <div style={{ marginBottom: 20 }}>
+              <SH ch="🎖️ Current Honor Ribbons" />
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
+                {honorRibbons.map((ribbon, i) => (
+                  <div key={i} style={{ ...card, padding: 12, background: "var(--card2)", display: "flex", alignItems: "center", gap: 10 }}>
+                    <Av m={ribbon.member} size={36} />
+                    <div style={{ overflow: "hidden" }}>
+                      <div style={{ fontSize: 10, color: "#C9A84C", fontWeight: "bold" }}>{ribbon.title}</div>
+                      <div style={{ fontFamily: "'Cinzel',serif", fontSize: 13, fontWeight: "bold" }}>{getMemberName(ribbon.member)}</div>
+                      <div style={{ fontSize: 10, color: "var(--sub)" }}>{ribbon.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div style={{ maxWidth: 640, margin: "0 auto" }}>
               {board.map((m, i) => (
                 <div key={m.id} style={{ ...card, padding: 14, display: "flex", alignItems: "center", gap: 14, marginBottom: 10 }}>
@@ -1441,7 +1696,11 @@ export default function App() {
         {/* ── YEARLY STATS ── */}
         {page === "yearly" && (
           <div>
-            <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Yearly Stats ⭐</h1>
+            <PageHeader
+              title="Yearly Stats"
+              icon="⭐"
+              briefing="A panoramic view of our community's 2026 reading journey, genre preferences, and individual quest targets."
+            />
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginBottom: 18 }}>
               {[{ n: `${avgBookLength} pp`, l: "Average Book Length", e: "📐" }, { n: `${activeCommunityPct}%`, l: "Community Active Rate", e: "⚡" }, { n: topG, l: "Most Read Genre", e: "🎭" }].map((item, idx) => (
@@ -1491,7 +1750,11 @@ export default function App() {
         {/* ── READING WRAPPED ── */}
         {page === "wrapped" && (
           <div>
-            <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Reading Wrapped 🎁</h1>
+            <PageHeader
+              title="Reading Wrapped"
+              icon="🎁"
+              briefing="Your personalized year-in-review card! Inspect your total pages, completed books, and streak consistency."
+            />
             <div style={{ ...card, padding: 30, textAlign: "center", maxWidth: 520, margin: "0 auto", background: "linear-gradient(135deg,#130F09,#1C150D)" }}>
               <Av m={user} size={70} />
               <div style={{ fontFamily: "'Cinzel',serif", fontSize: 22, color: "#C9A84C", margin: "14px 0 6px" }}>{getMemberName(user)}'s 2026 Wrapped</div>
@@ -1507,39 +1770,14 @@ export default function App() {
           </div>
         )}
 
-        {/* ── READING TIMER ── */}
-        {page === "timer" && (
-          <div>
-            <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Reading Timer ⏱️</h1>
-            <div style={{ ...card, padding: 30, textAlign: "center", maxWidth: 480, margin: "0 auto" }}>
-              <div style={{ fontFamily: "'Cinzel',serif", fontSize: 48, color: "#C9A84C", marginBottom: 20 }}>{fmtTimer(timerSecs)}</div>
-              <FI value={timerBook} onChange={e => setTimerBook(e.target.value)} placeholder="What book are you reading?" style={{ marginBottom: 20 }} />
-              <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
-                {!timerRunning ? <GB ch="▶ Start" onClick={() => setTimerRunning(true)} /> : <GB ch="⏸ Pause" ghost onClick={() => setTimerRunning(false)} />}
-                <GB ch="⏹ Reset" ghost onClick={() => { setTimerRunning(false); setTimerSecs(0); }} />
-                {timerSecs > 0 && !timerRunning && <GB ch="✅ Log Session" onClick={() => { showToast(`Logged ${fmtTimer(timerSecs)} reading! 📚`); setTimerSecs(0); }} />}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── DAILY STREAK PAGE ── */}
-        {page === "streak" && (
-          <div>
-            <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Daily Streak 🔥</h1>
-            <div style={{ ...card, padding: 30, textAlign: "center", marginBottom: 20 }}>
-              <div style={{ fontSize: 50, marginBottom: 10 }}>🔥</div>
-              <div style={{ fontFamily: "'Cinzel',serif", fontSize: 32, color: "#C9A84C" }}>{user.streak_count || 0} Days in a Row</div>
-              <p style={{ color: "var(--sub)", fontSize: 13, margin: "10px 0 20px" }}>Consistency counts more than speed! Log at least 1 page a day.</p>
-              <GB ch="✅ Log Today's Reading" onClick={() => checkinToday()} />
-            </div>
-          </div>
-        )}
-
         {/* ── ADMIN PANEL ── */}
         {page === "admin" && user?.isadmin && (
           <div>
-            <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", marginBottom: 16 }}>Admin Panel ⚙️</h1>
+            <PageHeader
+              title="Admin Panel"
+              icon="⚙️"
+              briefing="Manage club members, remove spam accounts, and monitor database records."
+            />
             <div style={{ ...card, overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
