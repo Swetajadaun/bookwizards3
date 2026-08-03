@@ -1,12 +1,9 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { FirestoreService } from "./services/firestore";
 
 /* ═══════════════════════════════════════════════════════════════
-   📚 BOOK WIZARDS — v20 (PERSISTENT LOGIN & COLD-START PROOF)
+   📚 BOOK WIZARDS — v23 (FIRESTORE + AUTO IMAGE COMPRESSION)
    ═══════════════════════════════════════════════════════════════ */
-
-const SUPABASE_URL = "https://nnxbappmomgnxqjtwaya.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ueGJhcHBtb21nbnhxanR3YXlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjAzNzIsImV4cCI6MjA5Mjc5NjM3Mn0.xK3hK3_CETJQ-qpvzu3K3eYNf3An7LfayXjN27S2czM";
-const USE_SB = true;
 
 const EJS_SERVICE = "YOUR_EMAILJS_SERVICE_ID";
 const EJS_TEMPLATE = "YOUR_EMAILJS_TEMPLATE_ID";
@@ -14,7 +11,7 @@ const EJS_KEY = "YOUR_EMAILJS_PUBLIC_KEY";
 
 const LOGO = "/logo.png";
 
-/* ─── LOCALSTORAGE HYDRATION HELPERS ────*/
+/* ─── LOCALSTORAGE HELPERS (ONLY FOR ACTIVE SESSION PERSISTENCE) ────*/
 function loadLocal(key, defaultVal) {
   try {
     const item = localStorage.getItem("BW_" + key);
@@ -33,73 +30,37 @@ function saveLocal(key, val) {
   } catch (e) { }
 }
 
-/* ─── SUPABASE ───────────────────────────────────────────────*/
-const SB_HEADERS = {
-  apikey: SUPABASE_KEY,
-  Authorization: `Bearer ${SUPABASE_KEY}`,
-  "Content-Type": "application/json",
-  Accept: "application/json",
-};
+/* ─── BROWSER IMAGE COMPRESSION UTILITY (KEEPS FIRESTORE < 1MB) ─── */
+function compressImage(base64Str, maxWidth = 150, maxHeight = 150, quality = 0.7) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = base64Str;
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
 
-async function sbFetch(url, options = {}, retries = 3) {
-  let lastErr = "Unknown error";
-  for (let i = 0; i < retries; i++) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-      const r = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(timeout);
-      if (!r.ok) {
-        const errText = await r.text().catch(() => "");
-        lastErr = `${r.status}${errText ? ": " + errText.slice(0, 160) : ""}`;
-        if (r.status === 401 || r.status === 403) break;
-        if (i < retries - 1) { await new Promise(res => setTimeout(res, 700 * (i + 1))); continue; }
-        break;
+      if (width > height) {
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width = Math.round((width * maxHeight) / height);
+          height = maxHeight;
+        }
       }
-      const text = await r.text();
-      return { ok: true, data: text ? JSON.parse(text) : null };
-    } catch (e) {
-      lastErr = e.name === "AbortError" ? "Request timed out" : e.message;
-      if (i < retries - 1) await new Promise(res => setTimeout(res, 700 * (i + 1)));
-    }
-  }
-  return { ok: false, error: lastErr };
-}
 
-const SB = {
-  async select(table) {
-    const res = await sbFetch(`${SUPABASE_URL}/rest/v1/${table}?select=*&order=id.asc`, { headers: SB_HEADERS }, 3);
-    return res.ok && Array.isArray(res.data) ? res.data : null;
-  },
-  async findMemberByEmail(email) {
-    const cleanEmail = encodeURIComponent(email.trim());
-    const res = await sbFetch(
-      `${SUPABASE_URL}/rest/v1/members?select=*&email=ilike.${cleanEmail}`,
-      { headers: SB_HEADERS },
-      3
-    );
-    if (res.ok && Array.isArray(res.data) && res.data.length > 0) {
-      return res.data[0];
-    }
-    return null;
-  },
-  async insert(table, row) {
-    return await sbFetch(`${SUPABASE_URL}/rest/v1/${table}`, {
-      method: "POST", headers: { ...SB_HEADERS, Prefer: "return=representation" }, body: JSON.stringify(row)
-    });
-  },
-  async update(table, row, id) {
-    return await sbFetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {
-      method: "PATCH", headers: { ...SB_HEADERS, Prefer: "return=representation" }, body: JSON.stringify(row)
-    });
-  },
-  async delete(table, id) {
-    return await sbFetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, { method: "DELETE", headers: SB_HEADERS });
-  },
-  async deleteWhere(table, col, val) {
-    return await sbFetch(`${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${encodeURIComponent(val)}`, { method: "DELETE", headers: SB_HEADERS });
-  }
-};
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => resolve(base64Str); // Fallback if image fails to load
+  });
+}
 
 async function sendWelcomeEmail(m) {
   if (EJS_SERVICE === "YOUR_EMAILJS_SERVICE_ID") return;
@@ -123,7 +84,6 @@ async function sendWelcomeEmail(m) {
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const GENRES = ["Fiction", "Fantasy", "Science Fiction", "Thriller", "Mythology", "Mystery", "Non-Fiction", "Biography", "Memoir", "Self-Help", "Science", "Philosophy", "Poetry", "Romance", "Classic", "Children", "Graphic Novel", "Short Stories", "History", "Psychology"];
 const MOODS = ["Cozy Potion ☕", "Dark & Twisted 🕸️", "Brain Burner 🧠", "Gentle Stroll 🌿", "Epic Quest ⚔️", "Tearjerker 💧"];
-const LANGS = ["English", "Hindi", "Bengali", "Dutch", "Swedish", "Mandarin", "Tamil", "Telugu", "Marathi", "Kannada", "Malayalam", "Gujarati", "Punjabi", "Urdu", "French", "German", "Spanish", "Portuguese", "Japanese", "Korean", "Arabic", "Russian", "Sanskrit"];
 const COUNTRIES = ["India", "United States", "United Kingdom", "Canada", "Australia", "UAE", "Singapore", "Germany", "France", "Netherlands", "New Zealand", "Sweden", "South Africa", "Japan", "Brazil", "Other"];
 const STATE_CITIES = {
   "Uttar Pradesh": ["Lucknow", "Kanpur", "Ghaziabad", "Agra", "Varanasi", "Meerut", "Prayagraj", "Bareilly", "Aligarh", "Noida", "Vrindavan", "Ayodhya"],
@@ -141,10 +101,7 @@ const QUOTES = [
   { q: "If there's a book that you want to read, but it hasn't been written yet, then you must write it.", a: "Toni Morrison" },
   { q: "I can never read all the books I want; I can never be all the people I want and live all the lives I want.", a: "Sylvia Plath" },
   { q: "If you only read the books that everyone else is reading, you can only think what everyone else is thinking.", a: "Haruki Murakami" },
-  { q: "We read books to find out who we are. What other people, real or imaginary, do and think and feel is an essential guide.", a: "Ursula K. Le Guin" },
-  { q: "It is what you read when you don't have to that determines what you will be when you can't help it.", a: "Oscar Wilde" },
-  { q: "When I look back, I am so impressed again with the life-giving power of literature.", a: "Maya Angelou" },
-  { q: "I have always imagined that Paradise will be a kind of library.", a: "Jorge Luis Borges" },
+  { q: "We read books to find out who we are.", a: "Ursula K. Le Guin" },
   { q: "Words are our most inexhaustible source of magic.", a: "Albus Dumbledore" },
   { q: "A reader lives a thousand lives before he dies.", a: "George R.R. Martin" }
 ];
@@ -183,7 +140,7 @@ const DEFAULT_THEMES = {
   December: { emoji: "🎄", title: "Mythology & Fantasy", desc: "End the year with magic, myth and wonder." },
 };
 
-/* ─── SAFE SUPABASE FIELD GETTERS & ROBUST MONTH MATCHING ─────*/
+/* ─── FIELD GETTERS & MONTH MATCHING ─────*/
 const getMemberId = (m) => String(m?.id || m?.ID || m?.memberid || m?.member_id || "").trim();
 const getMemberName = (m) => m?.name || m?.Name || m?.email || "Wizard";
 const getBookMemberId = (b) => String(b?.memberid || b?.memberId || b?.member_id || b?.user_id || b?.userid || "").trim();
@@ -213,12 +170,11 @@ const isStatus = (b, expected) => {
 /* ─── UTILS ──────────────────────────────────────────────────*/
 const abg = n => ["#7B2D2D", "#1A472A", "#0E1A40", "#5C2D91", "#B8540A", "#1565C0", "#2E7D32", "#6D2D92"][(n?.charCodeAt(0) || 0) % 8];
 const ini = n => (n || "?").split(" ").slice(0, 2).map(w => w[0] || "").join("").toUpperCase();
-const fmt = d => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
 const nextId = ms => { const n = ms.map(m => parseInt((getMemberId(m) || "BW000").replace(/\D/g, "")) || 0); return `BW${String(Math.max(0, ...n) + 1).padStart(3, "0")}`; };
 const rand = arr => arr[Math.floor(Math.random() * arr.length)];
 const today = () => new Date().toISOString().slice(0, 10);
 
-/* ─── 100% DETERMINISTIC MONTHLY BUDDY SHUFFLE ────*/
+/* ─── DETERMINISTIC MONTHLY BUDDY SHUFFLE ────*/
 function getMonthlyBuddyPairs(monthName, membersList) {
   if (!membersList || membersList.length <= 1) return [];
   const sorted = [...membersList].sort((a, b) => getMemberId(a).localeCompare(getMemberId(b)));
@@ -244,43 +200,29 @@ function getMonthlyBuddy(userId, monthName, membersList) {
   return getMemberId(myPair.m1) === userId ? myPair.m2 : myPair.m1;
 }
 
-/* ─── PARTICLE ANIMATIONS (FLOWING STARS) ────────────────────*/
+/* ─── UI COMPONENTS ──────────────────────────────────────────*/
 function Particles() {
   const ps = Array.from({ length: 25 }, (_, i) => ({
-    id: i,
-    x: Math.random() * 100,
-    d: 2.2 + Math.random() * 4,
-    dl: Math.random() * 5,
-    e: ["✨", "⭐", "💫", "⚡", "🌟", "☄️"][i % 6]
+    id: i, x: Math.random() * 100, d: 2.2 + Math.random() * 4, dl: Math.random() * 5, e: ["✨", "⭐", "💫", "⚡", "🌟", "☄️"][i % 6]
   }));
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}>
       <style>{`
         @keyframes fp{0%{opacity:0;transform:translateY(0) rotate(0)}15%{opacity:.85}100%{opacity:0;transform:translateY(-110vh) rotate(400deg)}}
         @keyframes glw{0%,100%{text-shadow:0 0 18px rgba(201,168,76,.25)}50%{text-shadow:0 0 38px rgba(201,168,76,.7),0 0 70px rgba(201,168,76,.3)}}
-        @keyframes fiu{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
-        @keyframes pls{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
       `}</style>
       {ps.map(p => (
-        <div key={p.id} style={{ position: "absolute", left: `${p.x}%`, bottom: -24, fontSize: 14, animation: `fp ${p.d}s ${p.dl}s infinite ease-in`, opacity: 0 }}>
-          {p.e}
-        </div>
+        <div key={p.id} style={{ position: "absolute", left: `${p.x}%`, bottom: -24, fontSize: 14, animation: `fp ${p.d}s ${p.dl}s infinite ease-in`, opacity: 0 }}>{p.e}</div>
       ))}
     </div>
   );
 }
 
-/* ─── SPLASH SCREEN ──────────────────────────────────────────*/
 function Splash({ onDone }) {
   const [p, setP] = useState(0);
   const q = rand(QUOTES);
   useEffect(() => {
-    const ts = [
-      setTimeout(() => setP(1), 300),
-      setTimeout(() => setP(2), 1100),
-      setTimeout(() => setP(3), 2100),
-      setTimeout(() => onDone(), 3900)
-    ];
+    const ts = [setTimeout(() => setP(1), 300), setTimeout(() => setP(2), 1100), setTimeout(() => setP(3), 2100), setTimeout(() => onDone(), 3900)];
     return () => ts.forEach(clearTimeout);
   }, [onDone]);
   return (
@@ -289,11 +231,11 @@ function Splash({ onDone }) {
       <div style={{ textAlign: "center", position: "relative", zIndex: 1, padding: 32 }}>
         <div style={{ marginBottom: 14, transition: "opacity .6s", opacity: p >= 1 ? 1 : 0 }}>
           <img src={LOGO} alt="BW" style={{ width: 88, height: 88, objectFit: "contain", borderRadius: 14 }} onError={e => { e.target.style.display = "none"; e.target.nextSibling.style.display = "block"; }} />
-          <div style={{ display: "none", fontSize: 68, animation: "pls 2s infinite" }}>🧙‍♂️</div>
+          <div style={{ display: "none", fontSize: 68 }}>🧙‍♂️</div>
         </div>
-        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 40, fontWeight: 900, letterSpacing: 4, transition: "all .8s", opacity: p >= 1 ? 1 : 0, transform: p >= 1 ? "none" : "translateY(18px)", background: "linear-gradient(135deg,#8B6914,#C9A84C,#F5E6A0,#C9A84C,#8B6914)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", animation: p >= 2 ? "glw 2.2s infinite" : "none" }}>BOOK WIZARDS</div>
-        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: "rgba(201,168,76,.55)", letterSpacing: 6, marginTop: 5, transition: "opacity .8s", opacity: p >= 2 ? 1 : 0 }}>READING · MAGIC · COMMUNITY</div>
-        <div style={{ marginTop: 26, maxWidth: 360, transition: "opacity .8s", opacity: p >= 3 ? 1 : 0 }}>
+        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 40, fontWeight: 900, letterSpacing: 4, transition: "all .8s", opacity: p >= 1 ? 1 : 0, background: "linear-gradient(135deg,#8B6914,#C9A84C,#F5E6A0,#C9A84C,#8B6914)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>BOOK WIZARDS</div>
+        <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: "rgba(201,168,76,.55)", letterSpacing: 6, marginTop: 5, opacity: p >= 2 ? 1 : 0 }}>READING · MAGIC · COMMUNITY</div>
+        <div style={{ marginTop: 26, maxWidth: 360, opacity: p >= 3 ? 1 : 0 }}>
           <div style={{ color: "rgba(255,255,255,.55)", fontStyle: "italic", fontSize: 14, lineHeight: 1.9 }}>"{q.q}"</div>
           <div style={{ color: "rgba(201,168,76,.45)", fontSize: 11, marginTop: 6, letterSpacing: 2 }}>— {q.a}</div>
         </div>
@@ -302,7 +244,6 @@ function Splash({ onDone }) {
   );
 }
 
-/* ─── COVER CACHE ────────────────────────────────────────────*/
 const coverCache = {};
 function Cover({ title, author, customCover, size = 80, r = 8 }) {
   const [src, setSrc] = useState(customCover || null);
@@ -320,9 +261,7 @@ function Cover({ title, author, customCover, size = 80, r = 8 }) {
         if (item?.cover_i) {
           const url = `https://covers.openlibrary.org/b/id/${item.cover_i}-M.jpg`;
           coverCache[ck] = url; setSrc(url); setDone(true);
-        } else {
-          coverCache[ck] = ""; setDone(true);
-        }
+        } else { coverCache[ck] = ""; setDone(true); }
       }).catch(() => { coverCache[ck] = ""; setDone(true); });
   }, [title, author, customCover, ck]);
 
@@ -342,7 +281,9 @@ function Cover({ title, author, customCover, size = 80, r = 8 }) {
 }
 
 function Av({ m, size = 36 }) {
-  if (m?.photo) return <img src={m.photo} alt={getMemberName(m)} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", border: "2px solid #C9A84C", flexShrink: 0 }} />;
+  if (m?.photo && (m.photo.startsWith("http") || m.photo.startsWith("data:image"))) {
+    return <img src={m.photo} alt={getMemberName(m)} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", border: "2px solid #C9A84C", flexShrink: 0 }} />;
+  }
   return <div style={{ width: size, height: size, borderRadius: "50%", background: abg(getMemberName(m)), display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * .36, fontWeight: 700, color: "#fff", flexShrink: 0, border: "2px solid rgba(201,168,76,.4)" }}>{ini(getMemberName(m))}</div>;
 }
 
@@ -361,22 +302,16 @@ function Stars({ v = 0, onChange, sz = 15 }) {
   );
 }
 
-/* ─── OBJECTIVE BRIEFING HEADER COMPONENT ─────*/
 function PageHeader({ title, icon, briefing, action }) {
   return (
     <div style={{ marginBottom: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
         <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", display: "flex", alignItems: "center", gap: 8 }}>
-          <span>{icon}</span>
-          <span>{title}</span>
+          <span>{icon}</span><span>{title}</span>
         </h1>
         {action}
       </div>
-      {briefing && (
-        <p style={{ color: "var(--sub)", fontSize: 13, lineHeight: 1.5, background: "rgba(201,168,76,.04)", borderLeft: "2px solid #C9A84C", padding: "8px 12px", borderRadius: "0 8px 8px 0" }}>
-          {briefing}
-        </p>
-      )}
+      {briefing && <p style={{ color: "var(--sub)", fontSize: 13, lineHeight: 1.5, background: "rgba(201,168,76,.04)", borderLeft: "2px solid #C9A84C", padding: "8px 12px", borderRadius: "0 8px 8px 0" }}>{briefing}</p>}
     </div>
   );
 }
@@ -424,7 +359,7 @@ function Donut({ slices, sz = 110 }) {
   );
 }
 
-const IS = { width: "100%", padding: "10px 13px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(201,168,76,.18)", borderRadius: 9, color: "#EDE8DF", fontSize: 13, marginBottom: 12, fontFamily: "inherit", outline: "none", transition: "border-color .2s" };
+const IS = { width: "100%", padding: "10px 13px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(201,168,76,.18)", borderRadius: 9, color: "#EDE8DF", fontSize: 13, marginBottom: 12, fontFamily: "inherit", outline: "none" };
 function FI(props) { return <input {...props} style={{ ...IS, ...(props.style || {}) }} />; }
 function FS({ ch, ...props }) { return <select {...props} style={{ ...IS, ...(props.style || {}) }}>{ch}</select>; }
 function FT(props) { return <textarea {...props} style={{ ...IS, height: 76, resize: "vertical", ...(props.style || {}) }} />; }
@@ -435,14 +370,13 @@ function GB({ ch, onClick, ghost, full, sm, red, style: s = {} }) {
   if (ghost) return <button onClick={onClick} style={{ ...base, background: "transparent", border: "1px solid rgba(201,168,76,.35)", color: "rgba(201,168,76,.7)" }}>{ch}</button>;
   return <button onClick={onClick} style={{ ...base, background: "linear-gradient(135deg,#A07820,#C9A84C,#A07820)", color: "#0B0806", width: full ? "100%" : "auto", boxShadow: "0 3px 16px rgba(201,168,76,.28)" }}>{ch}</button>;
 }
-function SH({ ch, action }) { return <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><h3 style={{ fontFamily: "'Cinzel',serif", fontSize: 15, color: "#C9A84C", letterSpacing: .4 }}>{ch}</h3>{action}</div>; }
+function SH({ ch, action }) { return <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><h3 style={{ fontFamily: "'Cinzel',serif", fontSize: 15, color: "#C9A84C" }}>{ch}</h3>{action}</div>; }
 function Nil({ icon, msg }) { return <div style={{ textAlign: "center", padding: "36px 16px", color: "rgba(255,255,255,.18)" }}><div style={{ fontSize: 36, marginBottom: 8 }}>{icon}</div><div style={{ fontSize: 12, fontFamily: "'Cinzel',serif" }}>{msg}</div></div>; }
 function Modal({ title, ch, onClose, wide = false }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.82)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 600, backdropFilter: "blur(8px)" }} onClick={onClose}>
-      <div style={{ background: "#0C0906", border: "1px solid rgba(201,168,76,.25)", borderRadius: 18, padding: "30px 34px", width: wide ? 680 : 500, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 0 70px rgba(201,168,76,.08)", position: "relative" }} onClick={e => e.stopPropagation()}>
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: "linear-gradient(90deg,transparent,#C9A84C,transparent)", borderRadius: "18px 18px 0 0" }} />
-        <h2 style={{ fontFamily: "'Cinzel',serif", fontSize: 19, color: "#C9A84C", marginBottom: 18, letterSpacing: .8 }}>{title}</h2>
+      <div style={{ background: "#0C0906", border: "1px solid rgba(201,168,76,.25)", borderRadius: 18, padding: "30px 34px", width: wide ? 680 : 500, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto", position: "relative" }} onClick={e => e.stopPropagation()}>
+        <h2 style={{ fontFamily: "'Cinzel',serif", fontSize: 19, color: "#C9A84C", marginBottom: 18 }}>{title}</h2>
         {ch}
       </div>
     </div>
@@ -461,12 +395,12 @@ function Confirm({ msg, onYes, onNo }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   MAIN APP
+   MAIN APP (ALL 18 VIEWS + FIRESTORE SYNC + IMAGE COMPRESSION)
 ═══════════════════════════════════════════════════════════ */
 export default function App() {
   const [splash, setSplash] = useState(true);
 
-  /* ── PERSISTENT SESSION HOOK: IF USER EXISTS IN STORAGE, AUTO-BOOT INTO "APP" ── */
+  // Persistent user session check
   const [user, setUserState] = useState(() => loadLocal("user", null));
   const [screen, setScreen] = useState(() => {
     const savedUser = loadLocal("user", null);
@@ -479,8 +413,10 @@ export default function App() {
   const [newMemberName, setNewMemberName] = useState("");
 
   const [page, setPage] = useState(() => loadLocal("page", "dashboard"));
-  const [members, setMembersState] = useState(() => loadLocal("members", []));
-  const [books, setBooksState] = useState(() => loadLocal("books", []));
+
+  // ── FIRESTORE SINGLE SOURCE OF TRUTH ──
+  const [members, setMembersState] = useState([]);
+  const [books, setBooksState] = useState([]);
   const [events, setEvents] = useState(() => loadLocal("events", [
     { id: "e1", month: "August", date: 15, title: "Friday Book Club Discussion", time: "6:00 PM", link: "https://meet.google.com/abc-defg-hij" }
   ]));
@@ -525,8 +461,6 @@ export default function App() {
   const [forums, setForumsState] = useState(() => loadLocal("forums", [
     { id: "p1", authorId: "BW001", title: "Thoughts on The God of Small Things?", body: "How did everyone interpret the ending chapters?", date: "1 Aug 2026", replies: [] }
   ]));
-  const [openPost, setOpenPost] = useState(null);
-  const [newReply, setNewReply] = useState("");
   const [showNewPost, setShowNewPost] = useState(false);
   const [newPost, setNewPost] = useState({ title: "", body: "", bookTitle: "" });
 
@@ -534,65 +468,22 @@ export default function App() {
   const [botm, setBotmState] = useState(() => loadLocal("botm", null));
   const [showRecommend, setShowRecommend] = useState(false);
   const [recForm, setRecForm] = useState({ toMemberId: "", bookTitle: "", bookAuthor: "", note: "" });
-  const [recommendations, setRecommendations] = useState([]);
   const [monthlyThemes, setMonthlyThemesState] = useState(() => loadLocal("monthlyThemes", DEFAULT_THEMES));
   const [themeForm, setThemeForm] = useState({ emoji: "", title: "", desc: "" });
 
-  const eBook = { title: "", author: "", genre: "Fiction", mood: "Cozy Potion ☕", origLang: "English", readLang: "English", totalPages: "", finishedPages: "", status: "Reading", rating: 0, review: "", customCover: "" };
+  const eBook = { title: "", author: "", genre: "Fiction", mood: "Cozy Potion ☕", totalPages: "", finishedPages: "", status: "Reading", rating: 0, review: "", customCover: "" };
   const [bf, setBf] = useState(eBook);
 
-  /* ── 0ms INSTANT SYNC WRAPPERS ── */
+  /* ── 0ms INSTANT SESSION WRAPPERS ── */
   const setUser = (u) => { setUserState(u); saveLocal("user", u); };
-  const setMembers = (ms) => {
-    setMembersState(prev => {
-      const next = typeof ms === "function" ? ms(prev) : ms;
-      saveLocal("members", next);
-      return next;
-    });
-  };
-  const setBooks = (bs) => {
-    setBooksState(prev => {
-      const next = typeof bs === "function" ? bs(prev) : bs;
-      saveLocal("books", next);
-      return next;
-    });
-  };
-  const setQuotes = (qs) => {
-    setQuotesState(prev => {
-      const next = typeof qs === "function" ? qs(prev) : qs;
-      saveLocal("quotes", next);
-      return next;
-    });
-  };
-  const setForums = (fs) => {
-    setForumsState(prev => {
-      const next = typeof fs === "function" ? fs(prev) : fs;
-      saveLocal("forums", next);
-      return next;
-    });
-  };
-  const setUserBingo = (ub) => {
-    setUserBingoState(prev => {
-      const next = typeof ub === "function" ? ub(prev) : ub;
-      saveLocal("userBingo", next);
-      return next;
-    });
-  };
-  const setCompletedChallenges = (cc) => {
-    setCompletedChallengesState(prev => {
-      const next = typeof cc === "function" ? cc(prev) : cc;
-      saveLocal("completedChallenges", next);
-      return next;
-    });
-  };
+  const setMembers = (ms) => { setMembersState(ms); };
+  const setBooks = (bs) => { setBooksState(bs); };
+  const setQuotes = (qs) => { setQuotesState(qs); saveLocal("quotes", qs); };
+  const setForums = (fs) => { setForumsState(fs); saveLocal("forums", fs); };
+  const setUserBingo = (ub) => { setUserBingoState(ub); saveLocal("userBingo", ub); };
+  const setCompletedChallenges = (cc) => { setCompletedChallengesState(cc); saveLocal("completedChallenges", cc); };
   const setBotm = (val) => { setBotmState(val); saveLocal("botm", val); };
-  const setMonthlyThemes = (mt) => {
-    setMonthlyThemesState(prev => {
-      const next = typeof mt === "function" ? mt(prev) : mt;
-      saveLocal("monthlyThemes", next);
-      return next;
-    });
-  };
+  const setMonthlyThemes = (mt) => { setMonthlyThemesState(mt); saveLocal("monthlyThemes", mt); };
 
   useEffect(() => { saveLocal("page", page); }, [page]);
   useEffect(() => { saveLocal("screen", screen); }, [screen]);
@@ -627,7 +518,7 @@ export default function App() {
     return () => clearInterval(qTimer);
   }, []);
 
-  /* ── BIRTHDAY ALERTS (ONLY SHOWS BIRTHDAY ON TOP RIBBON) ── */
+  /* ── BIRTHDAY ALERTS ── */
   const birthdaysToday = useMemo(() => {
     const tdMonth = MONTHS[new Date().getMonth()];
     const tdDay = new Date().getDate();
@@ -643,32 +534,21 @@ export default function App() {
 
   const fmtTimer = s => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
-  /* ── BACKGROUND SUPABASE SYNC WITH SMART MERGE ── */
+  /* ── INITIAL FIRESTORE SYNC ── */
   const loadData = useCallback(async () => {
-    if (!USE_SB) return;
     try {
-      const [msRes, bsRes] = await Promise.all([SB.select("members"), SB.select("books")]);
-
-      if (msRes && Array.isArray(msRes)) {
-        setMembers(prev => {
-          const map = new Map(prev.map(m => [getMemberId(m), m]));
-          msRes.forEach(m => map.set(getMemberId(m), m));
-          return Array.from(map.values());
-        });
-      }
-      if (bsRes && Array.isArray(bsRes)) {
-        setBooks(prev => {
-          const map = new Map(prev.map(b => [b.id, b]));
-          bsRes.forEach(b => map.set(b.id, b));
-          return Array.from(map.values());
-        });
-      }
+      const [msRes, bsRes] = await Promise.all([
+        FirestoreService.getAll("members"),
+        FirestoreService.getAll("books")
+      ]);
+      if (msRes && Array.isArray(msRes)) setMembers(msRes);
+      if (bsRes && Array.isArray(bsRes)) setBooks(bsRes);
 
       if (user && msRes && Array.isArray(msRes)) {
         const freshUser = msRes.find(m => getMemberId(m) === getMemberId(user));
         if (freshUser) setUser(freshUser);
       }
-    } catch (e) { console.error("Load error:", e); }
+    } catch (e) { console.error("Firestore sync error:", e); }
   }, [user]);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -678,46 +558,28 @@ export default function App() {
     setTimeout(() => setToast({ msg: "", type: "success" }), 3500);
   }
 
-  function handlePhoto(e, cb) {
+  /* ── PHOTO UPLOAD WITH AUTOMATIC COMPRESSION ── */
+  async function handlePhoto(e, cb) {
     const f = e.target.files[0];
     if (!f) return;
     const rd = new FileReader();
-    rd.onload = ev => cb(ev.target.result);
+    rd.onload = async ev => {
+      const compressed = await compressImage(ev.target.result, 150, 150, 0.7);
+      cb(compressed);
+    };
     rd.readAsDataURL(f);
   }
 
-  /* ── 100% RELIABLE LOGIN: DIRECT DB LOOKUP + COLD-START RESILIENCE ── */
+  /* ── 100% RELIABLE FIRESTORE LOGIN ── */
   async function doLogin() {
     const emailInput = loginEmail.toLowerCase().trim();
-    if (!emailInput) {
-      setLoginErr("⚡ Please enter your email address.");
-      return;
-    }
-
-    setLoading(true);
-    setLoginErr("");
+    if (!emailInput) { setLoginErr("⚡ Please enter your email address."); return; }
+    setLoading(true); setLoginErr("");
 
     try {
-      let foundUser = null;
-
-      if (USE_SB) {
-        foundUser = await SB.findMemberByEmail(emailInput);
-
-        if (!foundUser) {
-          const freshMembers = await SB.select("members");
-          if (freshMembers && Array.isArray(freshMembers)) {
-            setMembers(freshMembers);
-            foundUser = freshMembers.find(
-              m => (m.email || m.Email || "").toLowerCase().trim() === emailInput
-            );
-          }
-        }
-      }
-
+      let foundUser = await FirestoreService.findMemberByEmail(emailInput);
       if (!foundUser && members && members.length > 0) {
-        foundUser = members.find(
-          m => (m.email || m.Email || "").toLowerCase().trim() === emailInput
-        );
+        foundUser = members.find(m => (m.email || m.Email || "").toLowerCase().trim() === emailInput);
       }
 
       if (!foundUser) {
@@ -730,55 +592,49 @@ export default function App() {
       setScreen("app");
     } catch (e) {
       console.error("Login error:", e);
-      setLoginErr("⚡ Connection error. Please check your internet and try again.");
+      setLoginErr("⚡ Connection error. Please try again.");
     } finally {
       setLoading(false);
     }
   }
 
-  /* ── REGISTRATION FIX: OPTIMISTIC LOCAL UPDATE TO PREVENT DATA FLICKER ── */
+  /* ── REGISTRATION DIRECTLY TO FIRESTORE ── */
   async function doRegister() {
     if (!reg.name || !reg.email) { setRegErr("Name and email are required."); return; }
-    if (!reg.bio) { setRegErr("Please write a short bio."); return; }
-    if (!reg.photo) { setRegErr("Please upload your photo."); return; }
-
     setLoading(true);
-    let lm = members;
 
-    if (USE_SB) {
-      const res = await SB.select("members");
-      if (res && Array.isArray(res)) {
-        const map = new Map(lm.map(m => [getMemberId(m), m]));
-        res.forEach(m => map.set(getMemberId(m), m));
-        lm = Array.from(map.values());
-        setMembers(lm);
-      }
-    }
-
-    if (lm.find(m => (m.email || m.Email || "").toLowerCase().trim() === reg.email.toLowerCase().trim())) {
+    const emailClean = reg.email.toLowerCase().trim();
+    const existing = members.find(m => (m.email || "").toLowerCase().trim() === emailClean);
+    if (existing) {
       setRegErr("Email already registered!"); setLoading(false); return;
     }
 
     const newM = {
-      id: nextId(lm), name: reg.name, email: reg.email, phone: reg.phone,
-      birthdaymonth: reg.birthdayMonth, birthdaydate: reg.birthdayDate,
-      state: reg.state, city: reg.city, country: reg.country,
-      postaladdress: reg.postalAddress, instagramlink: reg.instagramLink,
-      goodreadslink: reg.goodreadsLink, bio: reg.bio, photo: reg.photo,
-      yearlytarget: 12, joindate: today(), isadmin: false, streak_count: 0
+      id: nextId(members),
+      name: reg.name,
+      email: reg.email,
+      email_lower: emailClean,
+      phone: reg.phone,
+      birthdaymonth: reg.birthdayMonth,
+      birthdaydate: reg.birthdayDate,
+      state: reg.state,
+      city: reg.city,
+      country: reg.country,
+      postaladdress: reg.postalAddress,
+      instagramlink: reg.instagramLink,
+      goodreadslink: reg.goodreadsLink,
+      bio: reg.bio,
+      photo: reg.photo || null,
+      yearlytarget: 12,
+      joindate: today(),
+      isadmin: false,
+      streak_count: 0
     };
 
-    setMembers(ms => {
-      const map = new Map(ms.map(m => [getMemberId(m), m]));
-      map.set(newM.id, newM);
-      return Array.from(map.values());
-    });
-
-    if (USE_SB) {
-      await SB.insert("members", newM);
-    }
-
+    setMembers(ms => [...ms, newM]);
+    await FirestoreService.saveDocument("members", newM.id, newM);
     await sendWelcomeEmail(newM);
+
     setNewMemberName(getMemberName(newM));
     setUser(newM);
     setLoading(false);
@@ -802,28 +658,41 @@ export default function App() {
     setUser(updated);
     setMembers(ms => ms.map(m => getMemberId(m) === getMemberId(user) ? updated : m));
 
-    if (USE_SB) await SB.update("members", { last_checkin: td, streak_count: newStreak }, getMemberId(user));
+    await FirestoreService.saveDocument("members", getMemberId(user), { last_checkin: td, streak_count: newStreak });
     showToast(`Awesome! Streak updated to ${newStreak} ${newStreak === 1 ? "day" : "days in a row"}! 🔥`);
   }
 
+  /* ── SAVE BOOK DIRECTLY TO FIRESTORE ── */
   async function saveBook() {
     if (!bf.title) { showToast("Please enter a book title!", "error"); return; }
     if (bf.status === "Finished" && (!bf.review || !bf.review.trim())) {
-      showToast("Please share a quick review or reaction (even 1–2 words!) before marking as Finished ⭐", "error");
+      showToast("Please share a quick review before marking as Finished ⭐", "error");
       return;
     }
+
     const tp = parseInt(bf.totalPages) || 0;
     const fp = parseInt(bf.finishedPages) || 0;
     const pct = tp > 0 ? Math.min(100, Math.round((fp / tp) * 100)) : 0;
     const wasEdit = !!editBook;
+
+    const bookId = editBook ? editBook.id : `b${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const bk = {
-      id: editBook ? editBook.id : "b" + Date.now(),
-      memberid: getMemberId(user), membername: getMemberName(user),
-      title: bf.title, author: bf.author, genre: bf.genre, mood: bf.mood,
-      totalpages: tp, finishedpages: fp, pct,
-      status: bf.status, rating: bf.rating, review: bf.review,
-      enddate: today(), endmonth: MONTHS[new Date().getMonth()],
-      customcover: bf.customCover || ""
+      id: bookId,
+      memberid: getMemberId(user),
+      membername: getMemberName(user),
+      title: bf.title,
+      author: bf.author,
+      genre: bf.genre,
+      mood: bf.mood,
+      totalpages: tp,
+      finishedpages: fp,
+      pct,
+      status: bf.status,
+      rating: bf.rating,
+      review: bf.review,
+      customcover: bf.customCover || "",
+      enddate: today(),
+      endmonth: MONTHS[new Date().getMonth()]
     };
 
     setBooks(bs => {
@@ -832,44 +701,46 @@ export default function App() {
       return Array.from(map.values());
     });
 
-    if (USE_SB) {
-      wasEdit ? await SB.update("books", bk, bk.id) : await SB.insert("books", bk);
-    }
+    await FirestoreService.saveDocument("books", bk.id, bk);
 
-    setShowBookMod(false); setEditBook(null); setBf(eBook);
-    showToast(wasEdit ? "Book updated! 📚" : "Book added to shelf! ✨");
+    setShowBookMod(false);
+    setEditBook(null);
+    setBf(eBook);
+    showToast(wasEdit ? "Book updated! 📚" : "Book saved to shelf! ✨");
   }
 
   async function saveGoal() {
     const updated = { ...user, yearlytarget: parseInt(goalVal) || 12 };
-    setUser(updated); setMembers(ms => ms.map(m => getMemberId(m) === getMemberId(user) ? updated : m));
-    if (USE_SB) await SB.update("members", { yearlytarget: updated.yearlytarget }, getMemberId(user));
-    setShowGoal(false); showToast("Reading goal updated! 🎯");
+    setUser(updated);
+    setMembers(ms => ms.map(m => getMemberId(m) === getMemberId(user) ? updated : m));
+    await FirestoreService.saveDocument("members", getMemberId(user), { yearlytarget: updated.yearlytarget });
+    setShowGoal(false);
+    showToast("Reading goal updated! 🎯");
   }
 
   async function saveProfile() {
     const updated = { ...user, ...pe };
-    setUser(updated); setMembers(ms => ms.map(m => getMemberId(m) === getMemberId(user) ? updated : m));
-    if (USE_SB) await SB.update("members", pe, getMemberId(user));
-    setShowProfEdit(false); showToast("Profile saved! ✨");
+    setUser(updated);
+    setMembers(ms => ms.map(m => getMemberId(m) === getMemberId(user) ? updated : m));
+    await FirestoreService.saveDocument("members", getMemberId(user), pe);
+    setShowProfEdit(false);
+    showToast("Profile saved! ✨");
   }
 
   async function doDelete() {
     const { type, id } = confirmDel;
     if (type === "book") {
       setBooks(bs => bs.filter(b => b.id !== id));
-      if (USE_SB) await SB.delete("books", id);
+      await FirestoreService.deleteDocument("books", id);
     }
     if (type === "member") {
       setBooks(bs => bs.filter(b => getBookMemberId(b) !== id));
       setMembers(ms => ms.filter(m => getMemberId(m) !== id));
-      if (USE_SB) {
-        await SB.deleteWhere("books", "memberid", id);
-        await SB.delete("members", id);
-      }
+      await FirestoreService.deleteDocument("members", id);
       if (id === getMemberId(user)) { setUser(null); setScreen("login"); }
     }
-    setConfirmDel(null); showToast("Deleted successfully", "error");
+    setConfirmDel(null);
+    showToast("Deleted successfully", "error");
   }
 
   function toggleBingoSquare(idx) {
@@ -1043,7 +914,7 @@ export default function App() {
             <>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 14px" }}>
                 <div style={{ gridColumn: "1/-1", marginBottom: 12 }}>
-                  <FL ch="Your Photo * (mandatory)" />
+                  <FL ch="Your Photo * (Auto-compressed for Firestore)" />
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(201,168,76,.08)", border: "2px solid rgba(201,168,76,.3)", overflow: "hidden", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       {photoPrev ? <img src={photoPrev} alt="p" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 26 }}>🧙</span>}
@@ -1140,7 +1011,6 @@ export default function App() {
       {/* ── MAIN CONTENT AREA ── */}
       <div style={{ marginLeft: sideOpen ? 230 : 60, flex: 1, padding: "26px 30px", transition: "margin-left .22s ease" }}>
 
-        {/* TOP RIBBON — BIRTHDAY CELEBRATIONS ONLY */}
         {birthdaysToday.length > 0 && (
           <div style={{ background: "linear-gradient(90deg,rgba(201,168,76,.2),rgba(201,168,76,.05))", border: "1px solid rgba(201,168,76,.4)", borderRadius: 12, padding: "12px 18px", marginBottom: 22, display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 24 }}>🎂</span>
@@ -1306,7 +1176,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── MY MONTHLY BUDDY (`📖 MY STUDY`) ── */}
+        {/* ── MY MONTHLY BUDDY ── */}
         {page === "buddy" && (
           <div>
             <PageHeader
@@ -1339,7 +1209,6 @@ export default function App() {
                   )}
                 </div>
 
-                {/* ── BUDDY ICEBREAKER HANDBOOK ── */}
                 <div style={{ background: "rgba(201,168,76,.05)", border: "1px dashed rgba(201,168,76,.3)", borderRadius: 12, padding: 14, textAlign: "left", marginBottom: 18 }}>
                   <div style={{ fontSize: 11, fontWeight: "bold", color: "#C9A84C", marginBottom: 6 }}>💡 BUDDY DISCUSSION STARTERS:</div>
                   <ul style={{ paddingLeft: 18, fontSize: 12, color: "var(--sub)", lineHeight: 1.6 }}>
@@ -1437,7 +1306,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── THE PENSIEVE (QUOTE FEED) ── */}
+        {/* ── THE PENSIEVE ── */}
         {page === "quotes" && (
           <div>
             <PageHeader
@@ -1463,7 +1332,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── CLUB BUDDY PAIRS (`🏰 THE GREAT HALL`) ── */}
+        {/* ── CLUB BUDDY PAIRS ── */}
         {page === "clubbuddies" && (
           <div>
             <PageHeader
@@ -1504,7 +1373,6 @@ export default function App() {
               action={<GB ch="+ New Discussion" sm onClick={() => setShowNewPost(true)} />}
             />
 
-            {/* ── FORUM PROMPT STARTERS GUIDE ── */}
             <div style={{ background: "var(--card2)", border: "1px solid var(--bdr)", borderRadius: 12, padding: 14, marginBottom: 18 }}>
               <div style={{ fontSize: 11, fontWeight: "bold", color: "#C9A84C", marginBottom: 6 }}>💬 GREAT FORUM INITIATING TOPICS:</div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12 }}>
@@ -1547,7 +1415,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── THE GREAT HALL (MEMBER DIRECTORY & HONOR RIBBONS) ── */}
+        {/* ── THE GREAT HALL ── */}
         {page === "greathall" && (
           <div>
             <PageHeader
@@ -1556,7 +1424,6 @@ export default function App() {
               briefing="The complete directory of wizards. Inspect member profiles, see active reading shelves, and celebrate Community Honors!"
             />
 
-            {/* ── COMMUNITY HONOR RIBBONS ── */}
             <div style={{ marginBottom: 22 }}>
               <SH ch="🎖️ Community Honor Ribbons" />
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
@@ -1681,7 +1548,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── 4x4 INTERACTIVE BOOK BINGO ── */}
+        {/* ── BINGO ── */}
         {page === "bingo" && (
           <div>
             <PageHeader
@@ -1713,7 +1580,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── READING CHALLENGES ── */}
+        {/* ── CHALLENGES ── */}
         {page === "challenges" && (
           <div>
             <PageHeader
@@ -1745,7 +1612,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── LEADERBOARD (WITH HONOR RIBBONS INCLUDED) ── */}
+        {/* ── LEADERBOARD ── */}
         {page === "leaderboard" && (
           <div>
             <PageHeader
@@ -1969,6 +1836,7 @@ export default function App() {
           <div>
             <FL ch="Book Title *" /><FI value={bf.title} onChange={e => setBf(b => ({ ...b, title: e.target.value }))} />
             <FL ch="Author" /><FI value={bf.author} onChange={e => setBf(b => ({ ...b, author: e.target.value }))} />
+            <FL ch="Custom Cover Image URL (optional)" /><FI value={bf.customCover} onChange={e => setBf(b => ({ ...b, customCover: e.target.value }))} placeholder="https://example.com/cover.jpg" />
             <FL ch="Mood / Potion Tag *" />
             <FS ch={MOODS.map(m => <option key={m}>{m}</option>)} value={bf.mood} onChange={e => setBf(b => ({ ...b, mood: e.target.value }))} />
             <FL ch="Total Pages" /><FI type="number" value={bf.totalPages} onChange={e => setBf(b => ({ ...b, totalPages: e.target.value }))} />
