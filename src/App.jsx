@@ -12,7 +12,7 @@ import {
 import { initializeApp } from "firebase/app";
 
 /* ═══════════════════════════════════════════════════════════════
-   📚 BOOK WIZARDS — v25 (FIRESTORE + START/FINISH DATES)
+   📚 BOOK WIZARDS — v26 (STABLE VIEWPORT & CLEAN SPLASH FIX)
    ═══════════════════════════════════════════════════════════════ */
 
 // ── LIVE FIREBASE CONFIG ──
@@ -294,14 +294,17 @@ function Splash({ onDone }) {
   const [p, setP] = useState(0);
   const q = rand(QUOTES);
   useEffect(() => {
-    const ts = [setTimeout(() => setP(1), 300), setTimeout(() => setP(2), 1100), setTimeout(() => setP(3), 2100), setTimeout(() => onDone(), 3500)];
+    const ts = [
+      setTimeout(() => setP(1), 300),
+      setTimeout(() => setP(2), 1100),
+      setTimeout(() => setP(3), 2100),
+      setTimeout(() => onDone(), 3000)
+    ];
     return () => ts.forEach(clearTimeout);
   }, [onDone]);
+
   return (
-    <div
-      onClick={onDone}
-      style={{ position: "fixed", inset: 0, background: "#050302", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, overflow: "hidden", cursor: "pointer" }}
-    >
+    <div style={{ height: "100vh", width: "100vw", background: "#050302", display: "flex", alignItems: "center", justifyContent: "center", position: "fixed", inset: 0, zIndex: 9999, overflow: "hidden" }}>
       <Particles />
       <div style={{ textAlign: "center", position: "relative", zIndex: 1, padding: 32 }}>
         <div style={{ marginBottom: 14, transition: "opacity .6s", opacity: p >= 1 ? 1 : 0 }}>
@@ -314,7 +317,6 @@ function Splash({ onDone }) {
           <div style={{ color: "rgba(255,255,255,.55)", fontStyle: "italic", fontSize: 14, lineHeight: 1.9 }}>"{q.q}"</div>
           <div style={{ color: "rgba(201,168,76,.45)", fontSize: 11, marginTop: 6, letterSpacing: 2 }}>— {q.a}</div>
         </div>
-        <div style={{ fontSize: 10, color: "rgba(201,168,76,0.3)", marginTop: 30, fontFamily: "'Cinzel',serif" }}>[ Tap anywhere to enter ]</div>
       </div>
     </div>
   );
@@ -851,7 +853,7 @@ export default function App() {
 
   const yLine = useMemo(() => MONTHS.map(mo => ({ l: mo.slice(0, 3), v: books.filter(b => isStatus(b, "Finished") && matchMonth(b, mo)).length })), [books]);
   const allG = useMemo(() => books.reduce((a, b) => { if (isStatus(b, "Finished")) a[b.genre] = (a[b.genre] || 0) + 1; return a; }, {}), [books]);
-  const gColors = ["#C9A84C", "#7B2D2D", "#1A472A", "#0E1A40", "#5C2D91", "#B8540A", "#1565C0", "#2E7D32", "#6D2D92"];
+  const gColors = ["#C9A84C", "#7B2D2D", "#1A472A", "#0E1A40", "#B8540A", "#1565C0", "#2E7D32", "#6D2D92"];
   const gSlices = useMemo(() => Object.entries(allG).slice(0, 7).map(([g, v], i) => ({ g, v, c: gColors[i % 8] })), [allG]);
 
   const board = useMemo(() => members.map(m => {
@@ -1211,7 +1213,6 @@ export default function App() {
                   <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, height: 32, overflow: "hidden" }}>{b.title}</div>
                   <div style={{ fontSize: 11, color: "var(--sub)", marginBottom: 4 }}>{b.author}</div>
 
-                  {/* Start & Finish Dates Display */}
                   <div style={{ fontSize: 10, color: "var(--sub)", margin: "4px 0", lineHeight: 1.4, textAlign: "left", background: "rgba(255,255,255,.03)", padding: "4px 6px", borderRadius: 4 }}>
                     {b.startDate && <div>🏁 Start: {fmtDate(b.startDate)}</div>}
                     {b.endDate && <div>✨ Finished: {fmtDate(b.endDate)}</div>}
