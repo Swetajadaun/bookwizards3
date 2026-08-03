@@ -12,7 +12,7 @@ import {
 import { initializeApp } from "firebase/app";
 
 /* ═══════════════════════════════════════════════════════════════
-   📚 BOOK WIZARDS — v23 (ULTIMATE UNIFIED FIRESTORE ENGINE)
+   📚 BOOK WIZARDS — v25 (FIRESTORE + START/FINISH DATES)
    ═══════════════════════════════════════════════════════════════ */
 
 // ── LIVE FIREBASE CONFIG ──
@@ -104,7 +104,7 @@ function saveLocal(key, val) {
   } catch (e) { }
 }
 
-/* ─── BROWSER IMAGE COMPRESSION (KEEPS FIRESTORE < 1MB) ───────*/
+/* ─── BROWSER IMAGE COMPRESSION ──────────────────────────────*/
 function compressImage(base64Str, maxWidth = 150, maxHeight = 150, quality = 0.7) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -244,6 +244,7 @@ const ini = n => (n || "?").split(" ").slice(0, 2).map(w => w[0] || "").join("")
 const nextId = ms => { const n = ms.map(m => parseInt((getMemberId(m) || "BW000").replace(/\D/g, "")) || 0); return `BW${String(Math.max(0, ...n) + 1).padStart(3, "0")}`; };
 const rand = arr => arr[Math.floor(Math.random() * arr.length)];
 const today = () => new Date().toISOString().slice(0, 10);
+const fmtDate = d => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
 
 /* ─── LOCKED MONTHLY BUDDY SHUFFLE ───────────────────────────*/
 function getMonthlyBuddyPairs(monthName, membersList) {
@@ -546,7 +547,8 @@ export default function App() {
   const [monthlyThemes, setMonthlyThemesState] = useState(() => loadLocal("monthlyThemes", DEFAULT_THEMES));
   const [themeForm, setThemeForm] = useState({ emoji: "", title: "", desc: "" });
 
-  const eBook = { title: "", author: "", genre: "Fiction", mood: "Cozy Potion ☕", totalPages: "", finishedPages: "", status: "Reading", rating: 0, review: "", customCover: "" };
+  // ── BOOK FORM STATE WITH START & FINISH DATES ──
+  const eBook = { title: "", author: "", genre: "Fiction", mood: "Cozy Potion ☕", totalPages: "", finishedPages: "", status: "Reading", startDate: today(), endDate: "", rating: 0, review: "", customCover: "" };
   const [bf, setBf] = useState(eBook);
 
   /* ── 0ms INSTANT SESSION WRAPPERS ── */
@@ -737,7 +739,7 @@ export default function App() {
     showToast(`Awesome! Streak updated to ${newStreak} ${newStreak === 1 ? "day" : "days in a row"}! 🔥`);
   }
 
-  /* ── SAVE BOOK DIRECTLY TO FIRESTORE (WITH REVIEW MANDATE) ── */
+  /* ── SAVE BOOK WITH START & FINISH DATES + REVIEW MANDATE ── */
   async function saveBook() {
     if (!bf.title) { showToast("Please enter a book title!", "error"); return; }
     if (bf.status === "Finished" && (!bf.review || !bf.review.trim())) {
@@ -747,10 +749,13 @@ export default function App() {
 
     const tp = parseInt(bf.totalPages) || 0;
     const fp = parseInt(bf.finishedPages) || 0;
-    const pct = tp > 0 ? Math.min(100, Math.round((fp / tp) * 100)) : 0;
+    const pct = tp > 0 ? Math.min(100, Math.round((fp / tp) * 100)) : (bf.status === "Finished" ? 100 : 0);
     const wasEdit = !!editBook;
 
     const bookId = editBook ? editBook.id : `b${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const finalEndDate = bf.status === "Finished" ? (bf.endDate || today()) : "";
+    const finalEndMonth = finalEndDate ? MONTHS[new Date(finalEndDate).getMonth()] : MONTHS[new Date().getMonth()];
+
     const bk = {
       id: bookId,
       memberid: getMemberId(user),
@@ -763,11 +768,13 @@ export default function App() {
       finishedpages: fp,
       pct,
       status: bf.status,
+      startDate: bf.startDate || today(),
+      endDate: finalEndDate,
       rating: bf.rating,
       review: bf.review,
       customcover: bf.customCover || "",
-      enddate: today(),
-      endmonth: MONTHS[new Date().getMonth()]
+      enddate: finalEndDate || today(),
+      endmonth: finalEndMonth
     };
 
     setBooks(bs => {
@@ -844,7 +851,7 @@ export default function App() {
 
   const yLine = useMemo(() => MONTHS.map(mo => ({ l: mo.slice(0, 3), v: books.filter(b => isStatus(b, "Finished") && matchMonth(b, mo)).length })), [books]);
   const allG = useMemo(() => books.reduce((a, b) => { if (isStatus(b, "Finished")) a[b.genre] = (a[b.genre] || 0) + 1; return a; }, {}), [books]);
-  const gColors = ["#C9A84C", "#7B2D2D", "#1A472A", "#0E1A40", "#B8540A", "#5C2D91", "#2E7D32", "#1565C0"];
+  const gColors = ["#C9A84C", "#7B2D2D", "#1A472A", "#0E1A40", "#5C2D91", "#B8540A", "#1565C0", "#2E7D32", "#6D2D92"];
   const gSlices = useMemo(() => Object.entries(allG).slice(0, 7).map(([g, v], i) => ({ g, v, c: gColors[i % 8] })), [allG]);
 
   const board = useMemo(() => members.map(m => {
@@ -925,17 +932,18 @@ export default function App() {
 
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap');
-    *{box-sizing:border-box;margin:0;padding:0;}
-    :root{--bg:#060402;--surf:#0D0A06;--card:#130F09;--card2:#1A140D;--bdr:rgba(201,168,76,.14);--bdr2:rgba(201,168,76,.28);--gold:#C9A84C;--text:#EDE8DF;--sub:rgba(237,232,223,.48);--mut:rgba(237,232,223,.22);}
-    body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--text);font-size:15px;}
-    ::-webkit-scrollbar{width:4px;height:4px;}::-webkit-scrollbar-track{background:var(--surf);}::-webkit-scrollbar-thumb{background:rgba(201,168,76,.28);border-radius:2px;}
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; width: 100%; overflow: hidden; background: #060402; color: #EDE8DF; font-family: 'Crimson Pro', Georgia, serif; font-size: 15px; }
+    #root { height: 100vh; width: 100vw; display: flex; overflow: hidden; position: relative; }
+    :root { --bg:#060402; --surf:#0D0A06; --card:#130F09; --card2:#1A140D; --bdr:rgba(201,168,76,.14); --bdr2:rgba(201,168,76,.28); --gold:#C9A84C; --text:#EDE8DF; --sub:rgba(237,232,223,.48); --mut:rgba(237,232,223,.22); }
+    ::-webkit-scrollbar{width:6px;height:6px;}::-webkit-scrollbar-track{background:var(--surf);}::-webkit-scrollbar-thumb{background:rgba(201,168,76,.35);border-radius:3px;}
     button,input,select,textarea{font-family:'Crimson Pro',Georgia,serif;outline:none;}
     select option{background:#0D0A06;}
     @keyframes glw{0%,100%{text-shadow:0 0 18px rgba(201,168,76,.25)}50%{text-shadow:0 0 38px rgba(201,168,76,.7)}}
   `;
   const card = { background: "var(--card)", border: "1px solid var(--bdr)", borderRadius: 14 };
 
-  if (splash) return <div><style>{css}</style><Splash onDone={() => setSplash(false)} /></div>;
+  if (splash) return <div style={{ height: "100%", width: "100%", position: "relative" }}><style>{css}</style><Splash onDone={() => setSplash(false)} /></div>;
 
   if (welcomeMsg) return (
     <div style={{ position: "fixed", inset: 0, background: "#060402", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
@@ -953,11 +961,11 @@ export default function App() {
   if (screen !== "app") {
     const quoteOfDay = QUOTES[quoteIdx % QUOTES.length];
     return (
-      <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+      <div style={{ height: "100vh", width: "100vw", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflowY: "auto", padding: "20px 0" }}>
         <style>{css}</style>
         <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(ellipse at 20% 50%,rgba(123,45,45,.07) 0%,transparent 60%),radial-gradient(ellipse at 80% 30%,rgba(14,26,64,.1) 0%,transparent 60%)" }} />
         <Particles />
-        <div style={{ position: "relative", zIndex: 1, background: "rgba(13,10,6,.97)", border: "1px solid var(--bdr2)", borderRadius: 22, padding: "38px 42px", width: screen === "register" ? 550 : 450, maxWidth: "95vw", maxHeight: "95vh", overflowY: "auto", boxShadow: "0 0 90px rgba(201,168,76,.07),0 32px 64px rgba(0,0,0,.7)" }}>
+        <div style={{ position: "relative", zIndex: 1, background: "rgba(13,10,6,.97)", border: "1px solid var(--bdr2)", borderRadius: 22, padding: "38px 42px", width: screen === "register" ? 550 : 450, maxWidth: "95vw", boxShadow: "0 0 90px rgba(201,168,76,.07),0 32px 64px rgba(0,0,0,.7)" }}>
           <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: "linear-gradient(90deg,transparent,#C9A84C,transparent)", borderRadius: "22px 22px 0 0" }} />
           <div style={{ textAlign: "center", marginBottom: 22 }}>
             <div style={{ width: 68, height: 68, margin: "0 auto 10px", borderRadius: 13, overflow: "hidden", border: "1px solid var(--bdr2)", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(201,168,76,.07)" }}>
@@ -1031,12 +1039,12 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg)" }}>
+    <div style={{ display: "flex", height: "100vh", width: "100vw", background: "var(--bg)", overflow: "hidden" }}>
       <style>{css}</style>
 
       {/* ── SIDEBAR ── */}
-      <div style={{ width: sideOpen ? 230 : 60, background: "var(--surf)", borderRight: "1px solid var(--bdr)", position: "fixed", top: 0, bottom: 0, left: 0, zIndex: 100, display: "flex", flexDirection: "column", transition: "width .22s ease", overflowX: "hidden" }}>
-        <div style={{ padding: "15px 13px", borderBottom: "1px solid var(--bdr)", display: "flex", alignItems: "center", gap: 9 }}>
+      <div style={{ width: sideOpen ? 230 : 60, background: "var(--surf)", borderRight: "1px solid var(--bdr)", height: "100vh", display: "flex", flexDirection: "column", transition: "width .22s ease", overflowX: "hidden", flexShrink: 0 }}>
+        <div style={{ padding: "15px 13px", borderBottom: "1px solid var(--bdr)", display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
           <div style={{ width: 34, height: 34, borderRadius: 9, background: "rgba(201,168,76,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🧙‍♂️</div>
           {sideOpen && <div><div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, color: "#C9A84C" }}>BOOK WIZARDS</div><div style={{ fontSize: 9, color: "var(--mut)", letterSpacing: 2 }}>READING CLUB</div></div>}
           <button style={{ marginLeft: "auto", background: "none", border: "none", color: "var(--sub)", cursor: "pointer" }} onClick={() => setSideOpen(o => !o)}>{sideOpen ? "◀" : "▶"}</button>
@@ -1062,7 +1070,7 @@ export default function App() {
           )}
         </div>
 
-        <div style={{ padding: "12px 10px", borderTop: "1px solid var(--bdr)" }}>
+        <div style={{ padding: "12px 10px", borderTop: "1px solid var(--bdr)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => { setPe({ ...user }); setShowProfEdit(true); }}>
             <Av m={user} size={32} />
             {sideOpen && <div style={{ overflow: "hidden", flex: 1 }}><div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{getMemberName(user).split(" ")[0]}</div><div style={{ fontSize: 10, color: "#C9A84C" }}>Day {(user.streak_count || 0)} Streak 🔥</div></div>}
@@ -1083,8 +1091,8 @@ export default function App() {
         </div>
       </div>
 
-      {/* ── MAIN CONTENT AREA ── */}
-      <div style={{ marginLeft: sideOpen ? 230 : 60, flex: 1, padding: "26px 30px", transition: "margin-left .22s ease" }}>
+      {/* ── MAIN CONTENT AREA (EXCLUSIVELY SCROLLABLE) ── */}
+      <div style={{ flex: 1, height: "100vh", overflowY: "auto", padding: "26px 30px" }}>
 
         {birthdaysToday.length > 0 && (
           <div style={{ background: "linear-gradient(90deg,rgba(201,168,76,.2),rgba(201,168,76,.05))", border: "1px solid rgba(201,168,76,.4)", borderRadius: 12, padding: "12px 18px", marginBottom: 22, display: "flex", alignItems: "center", gap: 12 }}>
@@ -1154,6 +1162,7 @@ export default function App() {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontFamily: "'Cinzel',serif", fontSize: 13 }}>{b.title}</div>
                     <div style={{ fontSize: 11, color: "var(--sub)" }}>{b.author} • <span style={{ color: "#C9A84C" }}>{b.mood || "Cozy Potion ☕"}</span></div>
+                    <div style={{ fontSize: 10, color: "rgba(201,168,76,.8)", marginTop: 2 }}>📅 Started: {fmtDate(b.startDate)}</div>
                     <PBar p={b.pct} c="#6B9FD4" h={5} />
                   </div>
                   <span style={{ fontSize: 11, color: "var(--mut)" }}>{b.pct}%</span>
@@ -1191,7 +1200,7 @@ export default function App() {
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(180px,1fr))", gap: 14 }}>
               {myBooks.filter(b => isStatus(b, shelfTab)).filter(b => {
                 const q = shelfSearch.trim().toLowerCase();
                 if (!q) return true;
@@ -1201,7 +1210,14 @@ export default function App() {
                   <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}><Cover title={b.title} author={b.author} customCover={b.customcover} size={80} r={6} /></div>
                   <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, height: 32, overflow: "hidden" }}>{b.title}</div>
                   <div style={{ fontSize: 11, color: "var(--sub)", marginBottom: 4 }}>{b.author}</div>
-                  <div style={{ fontSize: 10, color: "#C9A84C", marginBottom: 8 }}>{b.mood || "Cozy Potion ☕"}</div>
+
+                  {/* Start & Finish Dates Display */}
+                  <div style={{ fontSize: 10, color: "var(--sub)", margin: "4px 0", lineHeight: 1.4, textAlign: "left", background: "rgba(255,255,255,.03)", padding: "4px 6px", borderRadius: 4 }}>
+                    {b.startDate && <div>🏁 Start: {fmtDate(b.startDate)}</div>}
+                    {b.endDate && <div>✨ Finished: {fmtDate(b.endDate)}</div>}
+                  </div>
+
+                  <div style={{ fontSize: 10, color: "#C9A84C", marginBottom: 6 }}>{b.mood || "Cozy Potion ☕"}</div>
                   {isStatus(b, "Reading") && <PBar p={b.pct} h={5} />}
                   {isStatus(b, "Finished") && <Stars v={b.rating} sz={12} />}
                   <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
@@ -1914,6 +1930,13 @@ export default function App() {
             <FL ch="Custom Cover Image URL (optional)" /><FI value={bf.customCover} onChange={e => setBf(b => ({ ...b, customCover: e.target.value }))} placeholder="https://example.com/cover.jpg" />
             <FL ch="Mood / Potion Tag *" />
             <FS ch={MOODS.map(m => <option key={m}>{m}</option>)} value={bf.mood} onChange={e => setBf(b => ({ ...b, mood: e.target.value }))} />
+
+            {/* ── START & FINISH DATE INPUTS ── */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+              <div><FL ch="Start Date" /><FI type="date" value={bf.startDate} onChange={e => setBf(b => ({ ...b, startDate: e.target.value }))} /></div>
+              <div><FL ch="Finish Date (Optional)" /><FI type="date" value={bf.endDate} onChange={e => setBf(b => ({ ...b, endDate: e.target.value }))} /></div>
+            </div>
+
             <FL ch="Total Pages" /><FI type="number" value={bf.totalPages} onChange={e => setBf(b => ({ ...b, totalPages: e.target.value }))} />
             <FL ch="Pages Read" /><FI type="number" value={bf.finishedPages} onChange={e => setBf(b => ({ ...b, finishedPages: e.target.value }))} />
             <FL ch="Status" />
