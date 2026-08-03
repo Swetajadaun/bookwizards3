@@ -1,9 +1,33 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { FirestoreService } from "./services/firestore";
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  doc,
+  setDoc,
+  deleteDoc,
+  query,
+  where
+} from "firebase/firestore";
+import { initializeApp } from "firebase/app";
 
 /* ═══════════════════════════════════════════════════════════════
-   📚 BOOK WIZARDS — v23 (FIRESTORE + AUTO IMAGE COMPRESSION)
+   📚 BOOK WIZARDS — v23 (ULTIMATE UNIFIED FIRESTORE ENGINE)
    ═══════════════════════════════════════════════════════════════ */
+
+// ── LIVE FIREBASE CONFIG ──
+const firebaseConfig = {
+  apiKey: "AIzaSyB-c_utKbHIt4064ipmByHhCe8JaTTXH2I",
+  authDomain: "book-wizard-40dc2.firebaseapp.com",
+  projectId: "book-wizard-40dc2",
+  storageBucket: "book-wizard-40dc2.firebasestorage.app",
+  messagingSenderId: "652532694457",
+  appId: "1:652532694457:web:3f8a957103142265d50a68",
+  measurementId: "G-N1YPL5M9H4"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
 const EJS_SERVICE = "YOUR_EMAILJS_SERVICE_ID";
 const EJS_TEMPLATE = "YOUR_EMAILJS_TEMPLATE_ID";
@@ -11,7 +35,57 @@ const EJS_KEY = "YOUR_EMAILJS_PUBLIC_KEY";
 
 const LOGO = "/logo.png";
 
-/* ─── LOCALSTORAGE HELPERS (ONLY FOR ACTIVE SESSION PERSISTENCE) ────*/
+/* ─── FIRESTORE SERVICE LAYER ────────────────────────────────*/
+const FirestoreService = {
+  async getAll(collName) {
+    try {
+      const snap = await getDocs(collection(db, collName));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (e) {
+      console.error(`Error fetching ${collName}:`, e);
+      return [];
+    }
+  },
+  async findMemberByEmail(email) {
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      let q = query(collection(db, "members"), where("email_lower", "==", cleanEmail));
+      let snap = await getDocs(q);
+      if (snap.empty) {
+        q = query(collection(db, "members"), where("email", "==", cleanEmail));
+        snap = await getDocs(q);
+      }
+      if (!snap.empty) {
+        const d = snap.docs[0];
+        return { id: d.id, ...d.data() };
+      }
+      return null;
+    } catch (e) {
+      console.error("Error finding member by email:", e);
+      return null;
+    }
+  },
+  async saveDocument(collName, docId, data) {
+    try {
+      await setDoc(doc(db, collName, String(docId)), data, { merge: true });
+      return true;
+    } catch (e) {
+      console.error(`Error saving to ${collName}:`, e);
+      return false;
+    }
+  },
+  async deleteDocument(collName, docId) {
+    try {
+      await deleteDoc(doc(db, collName, String(docId)));
+      return true;
+    } catch (e) {
+      console.error(`Error deleting from ${collName}:`, e);
+      return false;
+    }
+  }
+};
+
+/* ─── LOCALSTORAGE HELPERS (SESSION ONLY) ────────────────────*/
 function loadLocal(key, defaultVal) {
   try {
     const item = localStorage.getItem("BW_" + key);
@@ -30,7 +104,7 @@ function saveLocal(key, val) {
   } catch (e) { }
 }
 
-/* ─── BROWSER IMAGE COMPRESSION UTILITY (KEEPS FIRESTORE < 1MB) ─── */
+/* ─── BROWSER IMAGE COMPRESSION (KEEPS FIRESTORE < 1MB) ───────*/
 function compressImage(base64Str, maxWidth = 150, maxHeight = 150, quality = 0.7) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -38,7 +112,6 @@ function compressImage(base64Str, maxWidth = 150, maxHeight = 150, quality = 0.7
     img.onload = () => {
       let width = img.width;
       let height = img.height;
-
       if (width > height) {
         if (width > maxWidth) {
           height = Math.round((height * maxWidth) / width);
@@ -50,7 +123,6 @@ function compressImage(base64Str, maxWidth = 150, maxHeight = 150, quality = 0.7
           height = maxHeight;
         }
       }
-
       const canvas = document.createElement("canvas");
       canvas.width = width;
       canvas.height = height;
@@ -58,7 +130,7 @@ function compressImage(base64Str, maxWidth = 150, maxHeight = 150, quality = 0.7
       ctx.drawImage(img, 0, 0, width, height);
       resolve(canvas.toDataURL("image/jpeg", quality));
     };
-    img.onerror = () => resolve(base64Str); // Fallback if image fails to load
+    img.onerror = () => resolve(base64Str);
   });
 }
 
@@ -80,7 +152,7 @@ async function sendWelcomeEmail(m) {
   } catch { }
 }
 
-/* ─── CONSTANTS & EXPANDED FAMOUS QUOTES ─────────────────────*/
+/* ─── CONSTANTS & QUOTES ─────────────────────────────────────*/
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const GENRES = ["Fiction", "Fantasy", "Science Fiction", "Thriller", "Mythology", "Mystery", "Non-Fiction", "Biography", "Memoir", "Self-Help", "Science", "Philosophy", "Poetry", "Romance", "Classic", "Children", "Graphic Novel", "Short Stories", "History", "Psychology"];
 const MOODS = ["Cozy Potion ☕", "Dark & Twisted 🕸️", "Brain Burner 🧠", "Gentle Stroll 🌿", "Epic Quest ⚔️", "Tearjerker 💧"];
@@ -140,7 +212,7 @@ const DEFAULT_THEMES = {
   December: { emoji: "🎄", title: "Mythology & Fantasy", desc: "End the year with magic, myth and wonder." },
 };
 
-/* ─── FIELD GETTERS & MONTH MATCHING ─────*/
+/* ─── HELPERS ────────────────────────────────────────────────*/
 const getMemberId = (m) => String(m?.id || m?.ID || m?.memberid || m?.member_id || "").trim();
 const getMemberName = (m) => m?.name || m?.Name || m?.email || "Wizard";
 const getBookMemberId = (b) => String(b?.memberid || b?.memberId || b?.member_id || b?.user_id || b?.userid || "").trim();
@@ -167,14 +239,13 @@ const isStatus = (b, expected) => {
   return st === exp;
 };
 
-/* ─── UTILS ──────────────────────────────────────────────────*/
 const abg = n => ["#7B2D2D", "#1A472A", "#0E1A40", "#5C2D91", "#B8540A", "#1565C0", "#2E7D32", "#6D2D92"][(n?.charCodeAt(0) || 0) % 8];
 const ini = n => (n || "?").split(" ").slice(0, 2).map(w => w[0] || "").join("").toUpperCase();
 const nextId = ms => { const n = ms.map(m => parseInt((getMemberId(m) || "BW000").replace(/\D/g, "")) || 0); return `BW${String(Math.max(0, ...n) + 1).padStart(3, "0")}`; };
 const rand = arr => arr[Math.floor(Math.random() * arr.length)];
 const today = () => new Date().toISOString().slice(0, 10);
 
-/* ─── DETERMINISTIC MONTHLY BUDDY SHUFFLE ────*/
+/* ─── LOCKED MONTHLY BUDDY SHUFFLE ───────────────────────────*/
 function getMonthlyBuddyPairs(monthName, membersList) {
   if (!membersList || membersList.length <= 1) return [];
   const sorted = [...membersList].sort((a, b) => getMemberId(a).localeCompare(getMemberId(b)));
@@ -222,11 +293,14 @@ function Splash({ onDone }) {
   const [p, setP] = useState(0);
   const q = rand(QUOTES);
   useEffect(() => {
-    const ts = [setTimeout(() => setP(1), 300), setTimeout(() => setP(2), 1100), setTimeout(() => setP(3), 2100), setTimeout(() => onDone(), 3900)];
+    const ts = [setTimeout(() => setP(1), 300), setTimeout(() => setP(2), 1100), setTimeout(() => setP(3), 2100), setTimeout(() => onDone(), 3500)];
     return () => ts.forEach(clearTimeout);
   }, [onDone]);
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#050302", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, overflow: "hidden" }}>
+    <div
+      onClick={onDone}
+      style={{ position: "fixed", inset: 0, background: "#050302", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, overflow: "hidden", cursor: "pointer" }}
+    >
       <Particles />
       <div style={{ textAlign: "center", position: "relative", zIndex: 1, padding: 32 }}>
         <div style={{ marginBottom: 14, transition: "opacity .6s", opacity: p >= 1 ? 1 : 0 }}>
@@ -239,6 +313,7 @@ function Splash({ onDone }) {
           <div style={{ color: "rgba(255,255,255,.55)", fontStyle: "italic", fontSize: 14, lineHeight: 1.9 }}>"{q.q}"</div>
           <div style={{ color: "rgba(201,168,76,.45)", fontSize: 11, marginTop: 6, letterSpacing: 2 }}>— {q.a}</div>
         </div>
+        <div style={{ fontSize: 10, color: "rgba(201,168,76,0.3)", marginTop: 30, fontFamily: "'Cinzel',serif" }}>[ Tap anywhere to enter ]</div>
       </div>
     </div>
   );
@@ -395,7 +470,7 @@ function Confirm({ msg, onYes, onNo }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   MAIN APP (ALL 18 VIEWS + FIRESTORE SYNC + IMAGE COMPRESSION)
+   MAIN APP COMPONENT
 ═══════════════════════════════════════════════════════════ */
 export default function App() {
   const [splash, setSplash] = useState(true);
@@ -414,7 +489,7 @@ export default function App() {
 
   const [page, setPage] = useState(() => loadLocal("page", "dashboard"));
 
-  // ── FIRESTORE SINGLE SOURCE OF TRUTH ──
+  // ── FIRESTORE COLLECTIONS STATE ──
   const [members, setMembersState] = useState([]);
   const [books, setBooksState] = useState([]);
   const [events, setEvents] = useState(() => loadLocal("events", [
@@ -662,7 +737,7 @@ export default function App() {
     showToast(`Awesome! Streak updated to ${newStreak} ${newStreak === 1 ? "day" : "days in a row"}! 🔥`);
   }
 
-  /* ── SAVE BOOK DIRECTLY TO FIRESTORE ── */
+  /* ── SAVE BOOK DIRECTLY TO FIRESTORE (WITH REVIEW MANDATE) ── */
   async function saveBook() {
     if (!bf.title) { showToast("Please enter a book title!", "error"); return; }
     if (bf.status === "Finished" && (!bf.review || !bf.review.trim())) {
@@ -914,7 +989,7 @@ export default function App() {
             <>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 14px" }}>
                 <div style={{ gridColumn: "1/-1", marginBottom: 12 }}>
-                  <FL ch="Your Photo * (Auto-compressed for Firestore)" />
+                  <FL ch="Your Photo * (Auto-compressed)" />
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(201,168,76,.08)", border: "2px solid rgba(201,168,76,.3)", overflow: "hidden", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       {photoPrev ? <img src={photoPrev} alt="p" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 26 }}>🧙</span>}
