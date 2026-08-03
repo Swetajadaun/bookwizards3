@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import {
-  getFirestore,
-  collection,
-  getDocs,
-  doc,
-  setDoc,
-  deleteDoc,
-  query,
-  where
+import { 
+  getFirestore, 
+  collection, 
+  getDocs, 
+  doc, 
+  setDoc, 
+  deleteDoc, 
+  query, 
+  where 
 } from "firebase/firestore";
 import { initializeApp } from "firebase/app";
 
 /* ═══════════════════════════════════════════════════════════════
-   📚 BOOK WIZARDS — v26 (STABLE VIEWPORT & CLEAN SPLASH FIX)
+   📚 BOOK WIZARDS — v30 (BUILD SYNTAX FIX)
    ═══════════════════════════════════════════════════════════════ */
 
 // ── LIVE FIREBASE CONFIG ──
@@ -101,7 +101,7 @@ function saveLocal(key, val) {
     } else {
       localStorage.setItem("BW_" + key, JSON.stringify(val));
     }
-  } catch (e) { }
+  } catch (e) {}
 }
 
 /* ─── BROWSER IMAGE COMPRESSION ──────────────────────────────*/
@@ -212,18 +212,22 @@ const DEFAULT_THEMES = {
   December: { emoji: "🎄", title: "Mythology & Fantasy", desc: "End the year with magic, myth and wonder." },
 };
 
-/* ─── HELPERS ────────────────────────────────────────────────*/
+/* ─── ROBUST FIELD GETTERS (HANDLES CSV & FIRESTORE VARIANTS) ─────*/
 const getMemberId = (m) => String(m?.id || m?.ID || m?.memberid || m?.member_id || "").trim();
 const getMemberName = (m) => m?.name || m?.Name || m?.email || "Wizard";
 const getBookMemberId = (b) => String(b?.memberid || b?.memberId || b?.member_id || b?.user_id || b?.userid || "").trim();
-const getBookPages = (b) => parseInt(b?.totalpages || b?.totalPages || b?.total_pages) || 0;
+
+const getBookPages = (b) => parseInt(b?.totalpages || b?.totalPages || b?.total_pages || b?.pages || 0) || 0;
+const getFinishedPages = (b) => parseInt(b?.finishedpages || b?.finishedPages || b?.finished_pages || b?.current_page || 0) || 0;
+const getStartDate = (b) => b?.startdate || b?.startDate || b?.start_date || "";
+const getEndDate = (b) => b?.enddate || b?.endDate || b?.end_date || b?.date || "";
 
 const matchMonth = (b, targetMonth) => {
   if (!b || !targetMonth) return false;
   const target = targetMonth.trim().toLowerCase();
   const rawMo = (b?.endmonth || b?.endMonth || b?.end_month || b?.month || "").trim().toLowerCase();
   if (rawMo && rawMo === target) return true;
-  const rawDate = b?.enddate || b?.endDate || b?.end_date || b?.date || "";
+  const rawDate = getEndDate(b);
   if (rawDate) {
     const d = new Date(rawDate);
     if (!isNaN(d) && MONTHS[d.getMonth()].toLowerCase() === target) return true;
@@ -295,9 +299,9 @@ function Splash({ onDone }) {
   const q = rand(QUOTES);
   useEffect(() => {
     const ts = [
-      setTimeout(() => setP(1), 300),
-      setTimeout(() => setP(2), 1100),
-      setTimeout(() => setP(3), 2100),
+      setTimeout(() => setP(1), 300), 
+      setTimeout(() => setP(2), 1100), 
+      setTimeout(() => setP(3), 2100), 
       setTimeout(() => onDone(), 3000)
     ];
     return () => ts.forEach(clearTimeout);
@@ -306,7 +310,7 @@ function Splash({ onDone }) {
   return (
     <div style={{ height: "100vh", width: "100vw", background: "#050302", display: "flex", alignItems: "center", justifyContent: "center", position: "fixed", inset: 0, zIndex: 9999, overflow: "hidden" }}>
       <Particles />
-      <div style={{ textAlign: "center", position: "relative", zIndex: 1, padding: 32 }}>
+      <div style={{ textAlign: "center", position: "relative", zIndex: 1, padding: 32, pointerEvents: "none" }}>
         <div style={{ marginBottom: 14, transition: "opacity .6s", opacity: p >= 1 ? 1 : 0 }}>
           <img src={LOGO} alt="BW" style={{ width: 88, height: 88, objectFit: "contain", borderRadius: 14 }} onError={e => { e.target.style.display = "none"; e.target.nextSibling.style.display = "block"; }} />
           <div style={{ display: "none", fontSize: 68 }}>🧙‍♂️</div>
@@ -491,14 +495,14 @@ export default function App() {
   const [newMemberName, setNewMemberName] = useState("");
 
   const [page, setPage] = useState(() => loadLocal("page", "dashboard"));
-
+  
   // ── FIRESTORE COLLECTIONS STATE ──
   const [members, setMembersState] = useState([]);
   const [books, setBooksState] = useState([]);
   const [events, setEvents] = useState(() => loadLocal("events", [
     { id: "e1", month: "August", date: 15, title: "Friday Book Club Discussion", time: "6:00 PM", link: "https://meet.google.com/abc-defg-hij" }
   ]));
-
+  
   const [sideOpen, setSideOpen] = useState(true);
   const [shelfTab, setShelfTab] = useState("Reading");
   const [shelfSearch, setShelfSearch] = useState("");
@@ -617,12 +621,12 @@ export default function App() {
   const loadData = useCallback(async () => {
     try {
       const [msRes, bsRes] = await Promise.all([
-        FirestoreService.getAll("members"),
+        FirestoreService.getAll("members"), 
         FirestoreService.getAll("books")
       ]);
       if (msRes && Array.isArray(msRes)) setMembers(msRes);
       if (bsRes && Array.isArray(bsRes)) setBooks(bsRes);
-
+      
       if (user && msRes && Array.isArray(msRes)) {
         const freshUser = msRes.find(m => getMemberId(m) === getMemberId(user));
         if (freshUser) setUser(freshUser);
@@ -733,15 +737,15 @@ export default function App() {
       newStreak = (parseInt(user.streak_count) || 0) + 1;
     }
     const updated = { ...user, last_checkin: td, streak_count: newStreak };
-
+    
     setUser(updated);
     setMembers(ms => ms.map(m => getMemberId(m) === getMemberId(user) ? updated : m));
-
+    
     await FirestoreService.saveDocument("members", getMemberId(user), { last_checkin: td, streak_count: newStreak });
     showToast(`Awesome! Streak updated to ${newStreak} ${newStreak === 1 ? "day" : "days in a row"}! 🔥`);
   }
 
-  /* ── SAVE BOOK WITH START & FINISH DATES + REVIEW MANDATE ── */
+  /* ── SAVE BOOK WITH MAPPED START/FINISH FIELDS + REVIEW MANDATE ── */
   async function saveBook() {
     if (!bf.title) { showToast("Please enter a book title!", "error"); return; }
     if (bf.status === "Finished" && (!bf.review || !bf.review.trim())) {
@@ -975,7 +979,7 @@ export default function App() {
             </div>
             <div style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", letterSpacing: 2, animation: "glw 3s infinite" }}>BOOK WIZARDS</div>
             <div style={{ fontSize: 11, color: "var(--sub)", marginTop: 3, letterSpacing: 3, fontFamily: "'Cinzel',serif" }}>READING · MAGIC · COMMUNITY</div>
-
+            
             <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(255,255,255,.03)", border: "1px solid rgba(201,168,76,.15)", borderRadius: 10, minHeight: 64, display: "flex", flexDirection: "column", justifyContent: "center" }}>
               <div style={{ fontSize: 13, fontStyle: "italic", color: "rgba(255,255,255,.7)", lineHeight: 1.5 }}>"{quoteOfDay.q}"</div>
               <div style={{ fontSize: 11, color: "#C9A84C", marginTop: 4 }}>— {quoteOfDay.a}</div>
@@ -1095,7 +1099,7 @@ export default function App() {
 
       {/* ── MAIN CONTENT AREA (EXCLUSIVELY SCROLLABLE) ── */}
       <div style={{ flex: 1, height: "100vh", overflowY: "auto", padding: "26px 30px" }}>
-
+        
         {birthdaysToday.length > 0 && (
           <div style={{ background: "linear-gradient(90deg,rgba(201,168,76,.2),rgba(201,168,76,.05))", border: "1px solid rgba(201,168,76,.4)", borderRadius: 12, padding: "12px 18px", marginBottom: 22, display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 24 }}>🎂</span>
@@ -1164,7 +1168,7 @@ export default function App() {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontFamily: "'Cinzel',serif", fontSize: 13 }}>{b.title}</div>
                     <div style={{ fontSize: 11, color: "var(--sub)" }}>{b.author} • <span style={{ color: "#C9A84C" }}>{b.mood || "Cozy Potion ☕"}</span></div>
-                    <div style={{ fontSize: 10, color: "rgba(201,168,76,.8)", marginTop: 2 }}>📅 Started: {fmtDate(b.startDate)}</div>
+                    <div style={{ fontSize: 10, color: "rgba(201,168,76,.8)", marginTop: 2 }}>📅 Started: {fmtDate(getStartDate(b))}</div>
                     <PBar p={b.pct} c="#6B9FD4" h={5} />
                   </div>
                   <span style={{ fontSize: 11, color: "var(--mut)" }}>{b.pct}%</span>
@@ -1207,26 +1211,30 @@ export default function App() {
                 const q = shelfSearch.trim().toLowerCase();
                 if (!q) return true;
                 return (b.title || "").toLowerCase().includes(q) || (b.author || "").toLowerCase().includes(q);
-              }).map(b => (
-                <div key={b.id} style={{ ...card, padding: 12, textAlign: "center" }}>
-                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}><Cover title={b.title} author={b.author} customCover={b.customcover} size={80} r={6} /></div>
-                  <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, height: 32, overflow: "hidden" }}>{b.title}</div>
-                  <div style={{ fontSize: 11, color: "var(--sub)", marginBottom: 4 }}>{b.author}</div>
+              }).map(b => {
+                const shortTitle = (b.title || "").length > 14 ? (b.title || "").slice(0, 14) + "..." : (b.title || "");
+                return (
+                  <div key={b.id} style={{ ...card, padding: 12, textAlign: "center" }}>
+                    <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}><Cover title={b.title} author={b.author} customCover={b.customcover} size={80} r={6} /></div>
+                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, height: 32, overflow: "hidden" }} title={b.title}>{shortTitle}</div>
+                    <div style={{ fontSize: 11, color: "var(--sub)", marginBottom: 4 }}>{b.author}</div>
+                    
+                    <div style={{ fontSize: 10, color: "var(--sub)", margin: "4px 0", lineHeight: 1.4, textAlign: "left", background: "rgba(255,255,255,.03)", padding: "4px 6px", borderRadius: 4 }}>
+                      {getStartDate(b) && <div>🏁 Start: {fmtDate(getStartDate(b))}</div>}
+                      {getEndDate(b) && <div>✨ Finished: {fmtDate(getEndDate(b))}</div>}
+                      {getBookPages(b) > 0 && <div style={{ color: "#6B9FD4" }}>📖 Pages: {getFinishedPages(b)} / {getBookPages(b)}</div>}
+                    </div>
 
-                  <div style={{ fontSize: 10, color: "var(--sub)", margin: "4px 0", lineHeight: 1.4, textAlign: "left", background: "rgba(255,255,255,.03)", padding: "4px 6px", borderRadius: 4 }}>
-                    {b.startDate && <div>🏁 Start: {fmtDate(b.startDate)}</div>}
-                    {b.endDate && <div>✨ Finished: {fmtDate(b.endDate)}</div>}
+                    <div style={{ fontSize: 10, color: "#C9A84C", marginBottom: 6 }}>{b.mood || "Cozy Potion ☕"}</div>
+                    {isStatus(b, "Reading") && <PBar p={b.pct || (getBookPages(b) > 0 ? Math.round((getFinishedPages(b)/getBookPages(b))*100) : 0)} h={5} />}
+                    {isStatus(b, "Finished") && <Stars v={b.rating} sz={12} />}
+                    <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                      <button style={{ flex: 1, padding: "4px", background: "rgba(201,168,76,.07)", border: "1px solid var(--bdr)", borderRadius: 6, color: "#C9A84C", fontSize: 10, cursor: "pointer" }} onClick={() => { setEditBook(b); setBf({ ...b, startDate: getStartDate(b), endDate: getEndDate(b), totalPages: getBookPages(b), finishedPages: getFinishedPages(b) }); setShowBookMod(true); }}>✏️ Edit</button>
+                      <button style={{ padding: "4px 8px", background: "rgba(180,40,40,.1)", border: "1px solid rgba(180,40,40,.3)", borderRadius: 6, color: "#E07070", fontSize: 10, cursor: "pointer" }} onClick={() => setConfirmDel({ type: "book", id: b.id, name: b.title })}>🗑️</button>
+                    </div>
                   </div>
-
-                  <div style={{ fontSize: 10, color: "#C9A84C", marginBottom: 6 }}>{b.mood || "Cozy Potion ☕"}</div>
-                  {isStatus(b, "Reading") && <PBar p={b.pct} h={5} />}
-                  {isStatus(b, "Finished") && <Stars v={b.rating} sz={12} />}
-                  <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                    <button style={{ flex: 1, padding: "4px", background: "rgba(201,168,76,.07)", border: "1px solid var(--bdr)", borderRadius: 6, color: "#C9A84C", fontSize: 10, cursor: "pointer" }} onClick={() => { setEditBook(b); setBf({ ...b }); setShowBookMod(true); }}>✏️ Edit</button>
-                    <button style={{ padding: "4px 8px", background: "rgba(180,40,40,.1)", border: "1px solid rgba(180,40,40,.3)", borderRadius: 6, color: "#E07070", fontSize: 10, cursor: "pointer" }} onClick={() => setConfirmDel({ type: "book", id: b.id, name: b.title })}>🗑️</button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -1633,9 +1641,9 @@ export default function App() {
               ))}
 
               {members.filter(m => m.birthdaymonth === selMonth && parseInt(m.birthdaydate) === selDay).length === 0 &&
-                events.filter(e => e.month === selMonth && parseInt(e.date) === selDay).length === 0 && (
-                  <div style={{ color: "var(--sub)", fontSize: 13 }}>No birthdays or meetings scheduled for this date. Quiet day to read!</div>
-                )}
+               events.filter(e => e.month === selMonth && parseInt(e.date) === selDay).length === 0 && (
+                <div style={{ color: "var(--sub)", fontSize: 13 }}>No birthdays or meetings scheduled for this date. Quiet day to read!</div>
+              )}
             </div>
           </div>
         )}
@@ -1750,7 +1758,7 @@ export default function App() {
               icon="⭐"
               briefing="A panoramic view of our community's 2026 reading journey, genre preferences, and individual quest targets."
             />
-
+            
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginBottom: 18 }}>
               {[{ n: `${avgBookLength} pp`, l: "Average Book Length", e: "📐" }, { n: `${activeCommunityPct}%`, l: "Community Active Rate", e: "⚡" }, { n: topG, l: "Most Read Genre", e: "🎭" }].map((item, idx) => (
                 <div key={idx} style={{ ...card, padding: 18, display: "flex", alignItems: "center", gap: 14 }}>
@@ -1931,7 +1939,7 @@ export default function App() {
             <FL ch="Custom Cover Image URL (optional)" /><FI value={bf.customCover} onChange={e => setBf(b => ({ ...b, customCover: e.target.value }))} placeholder="https://example.com/cover.jpg" />
             <FL ch="Mood / Potion Tag *" />
             <FS ch={MOODS.map(m => <option key={m}>{m}</option>)} value={bf.mood} onChange={e => setBf(b => ({ ...b, mood: e.target.value }))} />
-
+            
             {/* ── START & FINISH DATE INPUTS ── */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
               <div><FL ch="Start Date" /><FI type="date" value={bf.startDate} onChange={e => setBf(b => ({ ...b, startDate: e.target.value }))} /></div>
@@ -1978,6 +1986,31 @@ export default function App() {
             </div>
           </div>
         } onClose={() => setShowGoal(false)} />
+      )}
+
+      {/* ── PROFILE EDIT MODAL (RESTORED & FULLY FUNCTIONAL) ── */}
+      {showProfEdit && (
+        <Modal title="✨ Edit Wizard Profile" ch={
+          <div>
+            <div style={{ marginBottom: 14, textAlign: "center" }}>
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+                <Av m={pe} size={64} />
+              </div>
+              <input type="file" accept="image/*" onChange={e => handlePhoto(e, v => setPe(p => ({ ...p, photo: v })))} style={{ display: "none" }} id="peph" />
+              <label htmlFor="peph" style={{ padding: "6px 12px", background: "rgba(201,168,76,.1)", border: "1px solid var(--bdr)", borderRadius: 6, color: "#C9A84C", fontSize: 11, cursor: "pointer", fontFamily: "'Cinzel',serif" }}>📷 Change Photo</label>
+            </div>
+            <FL ch="Full Name" /><FI value={pe.name || ""} onChange={e => setPe(p => ({ ...p, name: e.target.value }))} />
+            <FL ch="City" /><FI value={pe.city || ""} onChange={e => setPe(p => ({ ...p, city: e.target.value }))} />
+            <FL ch="Country" /><FI value={pe.country || ""} onChange={e => setPe(p => ({ ...p, country: e.target.value }))} />
+            <FL ch="Instagram Link" /><FI value={pe.instagramlink || ""} onChange={e => setPe(p => ({ ...p, instagramlink: e.target.value }))} />
+            <FL ch="Goodreads Link" /><FI value={pe.goodreadslink || ""} onChange={e => setPe(p => ({ ...p, goodreadslink: e.target.value }))} />
+            <FL ch="Bio" /><FT value={pe.bio || ""} onChange={e => setPe(p => ({ ...p, bio: e.target.value }))} />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
+              <GB ch="Cancel" ghost onClick={() => setShowProfEdit(false)} />
+              <GB ch="Save Profile ✨" onClick={saveProfile} />
+            </div>
+          </div>
+        } onClose={() => setShowProfEdit(false)} />
       )}
 
       {viewMember && (
