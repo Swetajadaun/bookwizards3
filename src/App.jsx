@@ -36,6 +36,36 @@ const EJS_KEY = "YOUR_EMAILJS_PUBLIC_KEY";
 
 const LOGO = "/logo.png";
 
+/* ─── GLOBAL STYLES (injected once, so fonts/CSS never reload or flash between screens) ─── */
+const GLOBAL_CSS = `
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; width: 100%; max-width: none; margin: 0; padding: 0; display: block; overflow: hidden; overscroll-behavior: none; background: #060402; color: #EDE8DF; font-family: 'Crimson Pro', Georgia, serif; font-size: 15px; -webkit-text-size-adjust: 100%; text-align: left; }
+  #root { position: fixed; inset: 0; width: auto; height: auto; max-width: none; margin: 0; padding: 0; text-align: left; display: flex; overflow: hidden; }
+  :root { --bg:#060402; --surf:#0D0A06; --card:#130F09; --card2:#1A140D; --bdr:rgba(201,168,76,.14); --bdr2:rgba(201,168,76,.28); --gold:#C9A84C; --text:#EDE8DF; --sub:rgba(237,232,223,.48); --mut:rgba(237,232,223,.22); }
+  ::-webkit-scrollbar{width:6px;height:6px;}::-webkit-scrollbar-track{background:var(--surf);}::-webkit-scrollbar-thumb{background:rgba(201,168,76,.35);border-radius:3px;}
+  button,input,select,textarea{font-family:'Crimson Pro',Georgia,serif;outline:none;}
+  select option{background:#0D0A06;}
+  @keyframes glw{0%,100%{text-shadow:0 0 18px rgba(201,168,76,.25)}50%{text-shadow:0 0 38px rgba(201,168,76,.7)}}
+  @keyframes fiu{0%{opacity:0;transform:translateY(12px)}100%{opacity:1;transform:translateY(0)}}
+  @keyframes fp{0%{opacity:0;transform:translate3d(0,0,0) rotate(0)}15%{opacity:.85}100%{opacity:0;transform:translate3d(0,-110vh,0) rotate(400deg)}}
+  @media (prefers-reduced-motion: reduce){ .bw-particle{ animation: none !important; display: none; } }
+`;
+if (typeof document !== "undefined") {
+  if (!document.getElementById("bw-fonts")) {
+    const link = document.createElement("link");
+    link.id = "bw-fonts";
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap";
+    document.head.appendChild(link);
+  }
+  if (!document.getElementById("bw-global-css")) {
+    const el = document.createElement("style");
+    el.id = "bw-global-css";
+    el.textContent = GLOBAL_CSS;
+    document.head.appendChild(el);
+  }
+}
+
 /* ─── FIRESTORE SERVICE LAYER ────────────────────────────────*/
 const FirestoreService = {
   async getAll(collName) {
@@ -310,23 +340,19 @@ const makePairKey = (monthName, idA, idB) => `${YEAR}-${monthName}|${[idA, idB].
 
 /* ─── UI COMPONENTS ──────────────────────────────────────────*/
 
-// FIX: particle positions are generated once, not on every render
+// particle positions are generated once, not on every render
 function Particles() {
-  const ps = useMemo(() => Array.from({ length: 25 }, (_, i) => ({
+  const ps = useMemo(() => Array.from({ length: 14 }, (_, i) => ({
     id: i,
     x: Math.random() * 100,
-    d: 2.2 + Math.random() * 4,
+    d: 3 + Math.random() * 4,
     dl: Math.random() * 5,
     e: ["✨", "⭐", "💫", "⚡", "🌟", "☄️"][i % 6]
   })), []);
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}>
-      <style>{`
-        @keyframes fp{0%{opacity:0;transform:translateY(0) rotate(0)}15%{opacity:.85}100%{opacity:0;transform:translateY(-110vh) rotate(400deg)}}
-        @keyframes glw{0%,100%{text-shadow:0 0 18px rgba(201,168,76,.25)}50%{text-shadow:0 0 38px rgba(201,168,76,.7),0 0 70px rgba(201,168,76,.3)}}
-      `}</style>
       {ps.map(p => (
-        <div key={p.id} style={{ position: "absolute", left: `${p.x}%`, bottom: -24, fontSize: 14, animation: `fp ${p.d}s ${p.dl}s infinite ease-in`, opacity: 0 }}>{p.e}</div>
+        <div key={p.id} className="bw-particle" style={{ position: "absolute", left: `${p.x}%`, bottom: -24, fontSize: 14, animation: `fp ${p.d}s ${p.dl}s infinite ease-in`, opacity: 0, willChange: "transform, opacity" }}>{p.e}</div>
       ))}
     </div>
   );
@@ -350,10 +376,10 @@ function Splash({ onDone }) {
   }, []);
 
   return (
-    <div style={{ height: "100vh", width: "100vw", background: "#050302", display: "flex", alignItems: "center", justifyContent: "center", position: "fixed", inset: 0, zIndex: 9999, overflow: "hidden" }}>
+    <div style={{ background: "#050302", display: "flex", alignItems: "center", justifyContent: "center", position: "fixed", inset: 0, zIndex: 9999, overflow: "hidden" }}>
       <Particles />
       <div style={{ textAlign: "center", position: "relative", zIndex: 1, padding: 32, pointerEvents: "none" }}>
-        <div style={{ marginBottom: 14, transition: "opacity .6s", opacity: p >= 1 ? 1 : 0 }}>
+        <div style={{ marginBottom: 14, height: 88, display: "flex", alignItems: "center", justifyContent: "center", transition: "opacity .6s", opacity: p >= 1 ? 1 : 0 }}>
           <img src={LOGO} alt="BW" style={{ width: 88, height: 88, objectFit: "contain", borderRadius: 14 }} onError={e => { e.target.style.display = "none"; e.target.nextSibling.style.display = "block"; }} />
           <div style={{ display: "none", fontSize: 68 }}>🧙‍♂️</div>
         </div>
@@ -364,6 +390,27 @@ function Splash({ onDone }) {
           <div style={{ color: "rgba(201,168,76,.45)", fontSize: 11, marginTop: 6, letterSpacing: 2 }}>— {q.a}</div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* Rotating quote for the login card. It keeps its OWN timer/state (so the whole app
+   doesn't re-render every few seconds) and all quotes are stacked in one grid cell,
+   so the box is always as tall as the longest quote and the card never jumps. */
+function RotatingQuote() {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setIdx(i => (i + 1) % QUOTES.length), 4500);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(255,255,255,.03)", border: "1px solid rgba(201,168,76,.15)", borderRadius: 10, display: "grid" }}>
+      {QUOTES.map((q, i) => (
+        <div key={i} aria-hidden={i !== idx} style={{ gridArea: "1 / 1", display: "flex", flexDirection: "column", justifyContent: "center", opacity: i === idx ? 1 : 0, transition: "opacity .6s ease", pointerEvents: "none" }}>
+          <div style={{ fontSize: 13, fontStyle: "italic", color: "rgba(255,255,255,.7)", lineHeight: 1.5 }}>"{q.q}"</div>
+          <div style={{ fontSize: 11, color: "#C9A84C", marginTop: 4 }}>— {q.a}</div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -661,7 +708,7 @@ export default function App() {
     { id: "e1", month: "August", date: 15, title: "Friday Book Club Discussion", time: "6:00 PM", link: "https://meet.google.com/abc-defg-hij" }
   ]));
   
-  const [sideOpen, setSideOpen] = useState(true);
+  const [sideOpen, setSideOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth > 800);
   const [shelfTab, setShelfTab] = useState("Reading");
   const [shelfSearch, setShelfSearch] = useState("");
   const [selMonth, setSelMonth] = useState(MONTHS[new Date().getMonth()]);
@@ -788,15 +835,6 @@ export default function App() {
     setBuddyLocks(l => ({ ...l, [selMonth]: docData }));
     FirestoreService.saveDocument("buddyPairs", `${YEAR}-${selMonth}`, docData);
   }, [buddyLocksReady, members, monthBuddies, selMonth, buddyLocks]);
-
-  /* ── ROTATING AUTHOR QUOTE ON LOGIN ── */
-  const [quoteIdx, setQuoteIdx] = useState(0);
-  useEffect(() => {
-    const qTimer = setInterval(() => {
-      setQuoteIdx(i => (i + 1) % QUOTES.length);
-    }, 4500);
-    return () => clearInterval(qTimer);
-  }, []);
 
   /* ── BIRTHDAY ALERTS ── */
   const birthdaysToday = useMemo(() => {
@@ -1150,27 +1188,15 @@ export default function App() {
     }
   ];
 
-  const css = `
-    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap');
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; width: 100%; overflow: hidden; background: #060402; color: #EDE8DF; font-family: 'Crimson Pro', Georgia, serif; font-size: 15px; }
-    #root { height: 100vh; height: 100dvh; width: 100vw; display: flex; overflow: hidden; position: relative; }
-    :root { --bg:#060402; --surf:#0D0A06; --card:#130F09; --card2:#1A140D; --bdr:rgba(201,168,76,.14); --bdr2:rgba(201,168,76,.28); --gold:#C9A84C; --text:#EDE8DF; --sub:rgba(237,232,223,.48); --mut:rgba(237,232,223,.22); }
-    ::-webkit-scrollbar{width:6px;height:6px;}::-webkit-scrollbar-track{background:var(--surf);}::-webkit-scrollbar-thumb{background:rgba(201,168,76,.35);border-radius:3px;}
-    button,input,select,textarea{font-family:'Crimson Pro',Georgia,serif;outline:none;}
-    select option{background:#0D0A06;}
-    @keyframes glw{0%,100%{text-shadow:0 0 18px rgba(201,168,76,.25)}50%{text-shadow:0 0 38px rgba(201,168,76,.7)}}
-    @keyframes fiu{0%{opacity:0;transform:translateY(12px)}100%{opacity:1;transform:translateY(0)}}
-  `;
   const card = { background: "var(--card)", border: "1px solid var(--bdr)", borderRadius: 14 };
 
   const handleSplashDone = useCallback(() => setSplash(false), []);
 
-  if (splash) return <div style={{ height: "100%", width: "100%", position: "relative" }}><style>{css}</style><Splash onDone={handleSplashDone} /></div>;
+  if (splash) return <Splash onDone={handleSplashDone} />;
 
   if (welcomeMsg) return (
     <div style={{ position: "fixed", inset: 0, background: "#060402", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
-      <style>{css}</style><Particles />
+      <Particles />
       <div style={{ textAlign: "center", position: "relative", zIndex: 1, animation: "fiu .5s ease" }}>
         <div style={{ fontSize: 68, marginBottom: 16 }}>⚡</div>
         <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, color: "rgba(201,168,76,.55)", letterSpacing: 8, marginBottom: 10 }}>WELCOME TO</div>
@@ -1182,13 +1208,11 @@ export default function App() {
   );
 
   if (screen !== "app") {
-    const quoteOfDay = QUOTES[quoteIdx % QUOTES.length];
     return (
-      <div style={{ height: "100vh", width: "100vw", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflowY: "auto", padding: "20px 0" }}>
-        <style>{css}</style>
-        <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(ellipse at 20% 50%,rgba(123,45,45,.07) 0%,transparent 60%),radial-gradient(ellipse at 80% 30%,rgba(14,26,64,.1) 0%,transparent 60%)" }} />
-        <Particles />
-        <div style={{ position: "relative", zIndex: 1, background: "rgba(13,10,6,.97)", border: "1px solid var(--bdr2)", borderRadius: 22, padding: "38px 42px", width: screen === "register" ? 550 : 450, maxWidth: "95vw", boxShadow: "0 0 90px rgba(201,168,76,.07),0 32px 64px rgba(0,0,0,.7)" }}>
+      <div style={{ position: "fixed", inset: 0, background: "var(--bg)", display: "flex", overflowY: "auto", padding: "20px 12px" }}>
+        <div style={{ position: "fixed", inset: 0, pointerEvents: "none", backgroundImage: "radial-gradient(ellipse at 20% 50%,rgba(123,45,45,.07) 0%,transparent 60%),radial-gradient(ellipse at 80% 30%,rgba(14,26,64,.1) 0%,transparent 60%)" }} />
+        <div style={{ position: "fixed", inset: 0, pointerEvents: "none" }}><Particles /></div>
+        <div style={{ position: "relative", zIndex: 1, margin: "auto", background: "rgba(13,10,6,.97)", border: "1px solid var(--bdr2)", borderRadius: 22, padding: "34px clamp(18px, 5vw, 42px)", width: screen === "register" ? 550 : 450, maxWidth: "95vw", boxShadow: "0 0 90px rgba(201,168,76,.07),0 32px 64px rgba(0,0,0,.7)" }}>
           <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: "linear-gradient(90deg,transparent,#C9A84C,transparent)", borderRadius: "22px 22px 0 0" }} />
           <div style={{ textAlign: "center", marginBottom: 22 }}>
             <div style={{ width: 68, height: 68, margin: "0 auto 10px", borderRadius: 13, overflow: "hidden", border: "1px solid var(--bdr2)", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(201,168,76,.07)" }}>
@@ -1197,10 +1221,7 @@ export default function App() {
             <div style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: "#C9A84C", letterSpacing: 2, animation: "glw 3s infinite" }}>BOOK WIZARDS</div>
             <div style={{ fontSize: 11, color: "var(--sub)", marginTop: 3, letterSpacing: 3, fontFamily: "'Cinzel',serif" }}>READING · MAGIC · COMMUNITY</div>
             
-            <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(255,255,255,.03)", border: "1px solid rgba(201,168,76,.15)", borderRadius: 10, minHeight: 64, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-              <div style={{ fontSize: 13, fontStyle: "italic", color: "rgba(255,255,255,.7)", lineHeight: 1.5 }}>"{quoteOfDay.q}"</div>
-              <div style={{ fontSize: 11, color: "#C9A84C", marginTop: 4 }}>— {quoteOfDay.a}</div>
-            </div>
+            <RotatingQuote />
           </div>
 
           {screen === "login" && (
@@ -1262,11 +1283,10 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: "flex", height: "100vh", width: "100vw", background: "var(--bg)", overflow: "hidden" }}>
-      <style>{css}</style>
+    <div style={{ position: "fixed", inset: 0, display: "flex", background: "var(--bg)", overflow: "hidden" }}>
 
       {/* ── SIDEBAR ── */}
-      <div style={{ width: sideOpen ? 230 : 60, background: "var(--surf)", borderRight: "1px solid var(--bdr)", height: "100vh", display: "flex", flexDirection: "column", transition: "width .22s ease", overflowX: "hidden", flexShrink: 0 }}>
+      <div style={{ width: sideOpen ? 230 : 60, background: "var(--surf)", borderRight: "1px solid var(--bdr)", height: "100%", display: "flex", flexDirection: "column", transition: "width .22s ease", overflowX: "hidden", flexShrink: 0 }}>
         <div style={{ padding: "15px 13px", borderBottom: "1px solid var(--bdr)", display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
           <div style={{ width: 34, height: 34, borderRadius: 9, background: "rgba(201,168,76,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🧙‍♂️</div>
           {sideOpen && <div><div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, color: "#C9A84C" }}>BOOK WIZARDS</div><div style={{ fontSize: 9, color: "var(--mut)", letterSpacing: 2 }}>READING CLUB</div></div>}
@@ -1315,7 +1335,7 @@ export default function App() {
       </div>
 
       {/* ── MAIN CONTENT AREA (EXCLUSIVELY SCROLLABLE) ── */}
-      <div style={{ flex: 1, height: "100vh", overflowY: "auto", padding: "26px 30px" }}>
+      <div style={{ flex: 1, minWidth: 0, height: "100%", overflowY: "auto", overscrollBehavior: "contain", scrollbarGutter: "stable", padding: "22px clamp(12px, 3vw, 30px)" }}>
         
         {birthdaysToday.length > 0 && (
           <div style={{ background: "linear-gradient(90deg,rgba(201,168,76,.2),rgba(201,168,76,.05))", border: "1px solid rgba(201,168,76,.4)", borderRadius: 12, padding: "12px 18px", marginBottom: 22, display: "flex", alignItems: "center", gap: 12 }}>
