@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { 
   getFirestore, 
   collection, 
@@ -7,12 +7,13 @@ import {
   setDoc, 
   deleteDoc, 
   query, 
-  where 
+  where,
+  onSnapshot
 } from "firebase/firestore";
 import { initializeApp } from "firebase/app";
 
 /* ═══════════════════════════════════════════════════════════════
-   📚 BOOK WIZARDS — v30 (BUILD SYNTAX FIX)
+   📚 BOOK WIZARDS — v31 (LOOP + SPLASH FIX)
    ═══════════════════════════════════════════════════════════════ */
 
 // ── LIVE FIREBASE CONFIG ──
@@ -250,37 +251,74 @@ const rand = arr => arr[Math.floor(Math.random() * arr.length)];
 const today = () => new Date().toISOString().slice(0, 10);
 const fmtDate = d => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
 
-/* ─── LOCKED MONTHLY BUDDY SHUFFLE ───────────────────────────*/
-function getMonthlyBuddyPairs(monthName, membersList) {
-  if (!membersList || membersList.length <= 1) return [];
-  const sorted = [...membersList].sort((a, b) => getMemberId(a).localeCompare(getMemberId(b)));
-  const seed = monthName.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) + YEAR;
-  const shuffled = [...sorted];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = (seed + i * 31) % (i + 1);
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+/* ─── MONTHLY BUDDY PAIRING ──────────────────────────────────
+   Every wizard gets at most ONE buddy per month. If the club has an odd
+   number of members, one wizard sits out instead of being paired twice.
+   Pairs are saved to Firestore ("buddyPairs") the first time a month is
+   viewed, so they stay the same all month even when new wizards join. */
+function seededRandom(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function pairUp(list, monthName) {
+  const rnd = seededRandom(monthName.split("").reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) >>> 0, YEAR));
+  const arr = [...list];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   const pairs = [];
-  for (let i = 0; i < shuffled.length; i += 2) {
-    const m1 = shuffled[i];
-    const m2 = shuffled[i + 1] || shuffled[0];
-    pairs.push({ m1, m2 });
-  }
-  return pairs;
+  for (let i = 0; i + 1 < arr.length; i += 2) pairs.push({ m1: arr[i], m2: arr[i + 1] });
+  return { pairs, unpaired: arr.length % 2 === 1 ? arr[arr.length - 1] : null };
 }
 
-function getMonthlyBuddy(userId, monthName, membersList) {
-  const pairs = getMonthlyBuddyPairs(monthName, membersList);
-  const myPair = pairs.find(p => getMemberId(p.m1) === userId || getMemberId(p.m2) === userId);
-  if (!myPair) return null;
-  return getMemberId(myPair.m1) === userId ? myPair.m2 : myPair.m1;
+// locked = the pairs already saved for this month (or undefined the first time)
+function resolveBuddyPairs(monthName, membersList, locked) {
+  if (!membersList || membersList.length < 2) return { pairs: [], unpaired: null };
+  const byId = new Map(membersList.map(m => [getMemberId(m), m]));
+  const used = new Set();
+  const pairs = [];
+
+  // keep saved pairs as long as both wizards still exist
+  ((locked && locked.pairs) || []).forEach(p => {
+    const a = byId.get(p.a), b = byId.get(p.b);
+    if (a && b && p.a !== p.b && !used.has(p.a) && !used.has(p.b)) {
+      pairs.push({ m1: a, m2: b });
+      used.add(p.a); used.add(p.b);
+    }
+  });
+
+  // everyone else (first-time shuffle, new members, or a partner who was removed)
+  const leftover = membersList
+    .filter(m => !used.has(getMemberId(m)))
+    .sort((x, y) => getMemberId(x).localeCompare(getMemberId(y)));
+  const extra = pairUp(leftover, monthName);
+  return { pairs: [...pairs, ...extra.pairs], unpaired: extra.unpaired };
 }
+
+const pairsSignature = ({ pairs, unpaired }) =>
+  pairs.map(p => [getMemberId(p.m1), getMemberId(p.m2)].sort().join("+")).sort().join("|") +
+  "#" + (unpaired ? getMemberId(unpaired) : "");
+
+const makePairKey = (monthName, idA, idB) => `${YEAR}-${monthName}|${[idA, idB].sort().join("|")}`;
 
 /* ─── UI COMPONENTS ──────────────────────────────────────────*/
+
+// FIX: particle positions are generated once, not on every render
 function Particles() {
-  const ps = Array.from({ length: 25 }, (_, i) => ({
-    id: i, x: Math.random() * 100, d: 2.2 + Math.random() * 4, dl: Math.random() * 5, e: ["✨", "⭐", "💫", "⚡", "🌟", "☄️"][i % 6]
-  }));
+  const ps = useMemo(() => Array.from({ length: 25 }, (_, i) => ({
+    id: i,
+    x: Math.random() * 100,
+    d: 2.2 + Math.random() * 4,
+    dl: Math.random() * 5,
+    e: ["✨", "⭐", "💫", "⚡", "🌟", "☄️"][i % 6]
+  })), []);
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}>
       <style>{`
@@ -294,18 +332,22 @@ function Particles() {
   );
 }
 
+// FIX: timers run once (onDone is held in a ref) and the quote is picked once
 function Splash({ onDone }) {
   const [p, setP] = useState(0);
-  const q = rand(QUOTES);
+  const [q] = useState(() => rand(QUOTES));
+  const doneRef = useRef(onDone);
+  doneRef.current = onDone;
+
   useEffect(() => {
     const ts = [
       setTimeout(() => setP(1), 300), 
       setTimeout(() => setP(2), 1100), 
       setTimeout(() => setP(3), 2100), 
-      setTimeout(() => onDone(), 3000)
+      setTimeout(() => doneRef.current(), 3000)
     ];
     return () => ts.forEach(clearTimeout);
-  }, [onDone]);
+  }, []);
 
   return (
     <div style={{ height: "100vh", width: "100vw", background: "#050302", display: "flex", alignItems: "center", justifyContent: "center", position: "fixed", inset: 0, zIndex: 9999, overflow: "hidden" }}>
@@ -399,21 +441,28 @@ function PageHeader({ title, icon, briefing, action }) {
 }
 
 /* ─── CHARTS ─────────────────────────────────────────────────*/
+
+// FIX: SVG paths can't use "%" values, so this now draws in a fixed viewBox
 function LineChart({ data, c = "#C9A84C", h = 100 }) {
-  const max = Math.max(...data.map(d => d.v), 1);
   if (data.length < 2) return null;
-  const pts = data.map((d, i) => [6 + (i / (data.length - 1)) * 88, h - 8 - ((d.v / max) * (h - 20))]);
-  const path = "M " + pts.map(([x, y]) => `${x}% ${y}`).join(" L ");
-  const area = path + ` L ${pts[pts.length - 1][0]}% ${h} L ${pts[0][0]}% ${h} Z`;
+  const W = 300;
+  const max = Math.max(...data.map(d => d.v), 1);
+  const pts = data.map((d, i) => [
+    18 + (i / (data.length - 1)) * (W - 36),
+    h - 8 - ((d.v / max) * (h - 20))
+  ]);
+  const path = "M " + pts.map(([x, y]) => `${x} ${y}`).join(" L ");
+  const area = path + ` L ${pts[pts.length - 1][0]} ${h} L ${pts[0][0]} ${h} Z`;
   return (
-    <svg width="100%" height={h} style={{ overflow: "visible" }}>
+    <svg width="100%" viewBox={`0 0 ${W} ${h + 14}`} style={{ overflow: "visible" }}>
       <defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={c} stopOpacity={.35} /><stop offset="100%" stopColor={c} stopOpacity={0} /></linearGradient></defs>
-      <path d={area} fill="url(#cg)" /><path d={path} fill="none" stroke={c} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+      <path d={area} fill="url(#cg)" />
+      <path d={path} fill="none" stroke={c} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
       {pts.map(([x, y], i) => (
         <g key={i}>
-          <circle cx={`${x}%`} cy={y} r={3.5} fill={c} stroke="rgba(0,0,0,.4)" strokeWidth={1.5} />
-          {data[i].v > 0 && <text x={`${x}%`} y={y - 7} textAnchor="middle" fontSize={8} fill={c} fontWeight="bold">{data[i].v}</text>}
-          <text x={`${x}%`} y={h + 2} textAnchor="middle" fontSize={8} fill="rgba(255,255,255,.35)">{data[i].l}</text>
+          <circle cx={x} cy={y} r={3.5} fill={c} stroke="rgba(0,0,0,.4)" strokeWidth={1.5} />
+          {data[i].v > 0 && <text x={x} y={y - 7} textAnchor="middle" fontSize={8} fill={c} fontWeight="bold">{data[i].v}</text>}
+          <text x={x} y={h + 10} textAnchor="middle" fontSize={8} fill="rgba(255,255,255,.35)">{data[i].l}</text>
         </g>
       ))}
     </svg>
@@ -476,6 +525,115 @@ function Confirm({ msg, onYes, onNo }) {
   );
 }
 
+/* ─── BUDDY CHAT ─────────────────────────────────────────────
+   Live conversation between two buddies for one month.
+   Messages live in the Firestore "buddyMessages" collection. */
+const BUDDY_STARTERS = [
+  "What were your first impressions of chapter 1?",
+  "Which character do you relate to the most so far?",
+  "Did that plot twist surprise you, or did you see it coming?",
+  "What mood tag would you give this book?"
+];
+const fmtMsgTime = ts => ts ? new Date(ts).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "";
+
+function BuddyChat({ pairKey, me, buddy, monthName }) {
+  const [msgs, setMsgs] = useState([]);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState("");
+  const boxRef = useRef(null);
+  const myId = getMemberId(me);
+  const buddyFirst = getMemberName(buddy).split(" ")[0];
+
+  useEffect(() => {
+    setMsgs([]);
+    setErr("");
+    if (!pairKey) return;
+    const q = query(collection(db, "buddyMessages"), where("pairKey", "==", pairKey));
+    const unsub = onSnapshot(
+      q,
+      snap => {
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+        setMsgs(list);
+      },
+      e => { console.error("Chat listener error:", e); setErr("Couldn't load the conversation. Check your connection."); }
+    );
+    return () => unsub();
+  }, [pairKey]);
+
+  // scroll only the message box, never the whole page
+  useEffect(() => {
+    const el = boxRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [msgs.length]);
+
+  async function send() {
+    const t = text.trim();
+    if (!t || sending || !pairKey) return;
+    setSending(true);
+    setErr("");
+    const id = `m${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const ok = await FirestoreService.saveDocument("buddyMessages", id, {
+      id, pairKey, month: monthName, senderId: myId, senderName: getMemberName(me),
+      text: t, createdAt: Date.now()
+    });
+    setSending(false);
+    if (ok) setText(""); else setErr("Message didn't send. Please try again.");
+  }
+
+  return (
+    <div style={{ background: "var(--card2)", border: "1px solid var(--bdr)", borderRadius: 12, padding: 14, textAlign: "left" }}>
+      <div style={{ fontSize: 11, fontWeight: "bold", color: "#C9A84C", marginBottom: 10, textTransform: "uppercase", letterSpacing: 1 }}>
+        💬 Chat with {buddyFirst} · {monthName}
+      </div>
+
+      <div ref={boxRef} style={{ height: 260, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, padding: "4px 2px", marginBottom: 10 }}>
+        {msgs.length === 0 && !err && (
+          <div style={{ margin: "auto", textAlign: "center", color: "var(--mut)", fontSize: 12, fontFamily: "'Cinzel',serif", lineHeight: 1.7 }}>
+            No messages yet.<br />Say hello to {buddyFirst} 👋
+          </div>
+        )}
+        {msgs.map(m => {
+          const mine = m.senderId === myId;
+          return (
+            <div key={m.id} style={{ alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "80%" }}>
+              <div style={{ background: mine ? "rgba(201,168,76,.16)" : "rgba(255,255,255,.05)", border: `1px solid ${mine ? "rgba(201,168,76,.35)" : "var(--bdr)"}`, borderRadius: mine ? "12px 12px 3px 12px" : "12px 12px 12px 3px", padding: "8px 12px", fontSize: 13, color: "var(--text)", lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                {m.text}
+              </div>
+              <div style={{ fontSize: 9, color: "var(--mut)", marginTop: 2, textAlign: mine ? "right" : "left" }}>
+                {mine ? "You" : buddyFirst} · {fmtMsgTime(m.createdAt)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+        {BUDDY_STARTERS.map(s => (
+          <button key={s} onClick={() => setText(s)} style={{ background: "rgba(201,168,76,.07)", border: "1px solid var(--bdr)", borderRadius: 14, padding: "3px 10px", color: "var(--sub)", fontSize: 10, cursor: "pointer" }}>
+            💡 {s}
+          </button>
+        ))}
+      </div>
+
+      {err && <div style={{ color: "#E07070", fontSize: 12, marginBottom: 8 }}>{err}</div>}
+
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+        <FT
+          value={text}
+          maxLength={1000}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+          placeholder={`Message ${buddyFirst}...  (Enter to send, Shift+Enter for a new line)`}
+          style={{ height: 46, marginBottom: 0, flex: 1 }}
+        />
+        <GB ch={sending ? "..." : "Send 📨"} onClick={send} />
+      </div>
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════════
    MAIN APP COMPONENT
 ═══════════════════════════════════════════════════════════ */
@@ -527,7 +685,7 @@ export default function App() {
   const [reg, setReg] = useState(eReg);
   const [regErr, setRegErr] = useState("");
   const [photoPrev, setPhotoPrev] = useState("");
-  const regCities = reg.state ? (STATE_CITIES[reg.state] || []).sort() : [];
+  const regCities = reg.state ? [...(STATE_CITIES[reg.state] || [])].sort() : [];
 
   const [quotes, setQuotesState] = useState(() => loadLocal("quotes", [
     { id: "q1", authorName: "Albus Dumbledore", quote: "Words are, in my not-so-humble opinion, our most inexhaustible source of magic.", bookTitle: "Harry Potter", postedBy: "BW001", date: "August 2026" }
@@ -553,23 +711,36 @@ export default function App() {
   const [monthlyThemes, setMonthlyThemesState] = useState(() => loadLocal("monthlyThemes", DEFAULT_THEMES));
   const [themeForm, setThemeForm] = useState({ emoji: "", title: "", desc: "" });
 
+  // saved buddy pairs per month (from Firestore) + whether they finished loading
+  const [buddyLocks, setBuddyLocks] = useState({});
+  const [buddyLocksReady, setBuddyLocksReady] = useState(false);
+
   // ── BOOK FORM STATE WITH START & FINISH DATES ──
   const eBook = { title: "", author: "", genre: "Fiction", mood: "Cozy Potion ☕", totalPages: "", finishedPages: "", status: "Reading", startDate: today(), endDate: "", rating: 0, review: "", customCover: "" };
   const [bf, setBf] = useState(eBook);
 
-  /* ── 0ms INSTANT SESSION WRAPPERS ── */
+  /* ── SESSION WRAPPERS ──
+     FIX: these now accept either a value OR an updater function (prev => next),
+     and save the resolved value, not the function itself. */
+  const persisted = (key, current, setState) => (val) => {
+    const next = typeof val === "function" ? val(current) : val;
+    setState(next);
+    saveLocal(key, next);
+  };
+
   const setUser = (u) => { setUserState(u); saveLocal("user", u); };
-  const setMembers = (ms) => { setMembersState(ms); };
-  const setBooks = (bs) => { setBooksState(bs); };
-  const setQuotes = (qs) => { setQuotesState(qs); saveLocal("quotes", qs); };
-  const setForums = (fs) => { setForumsState(fs); saveLocal("forums", fs); };
-  const setUserBingo = (ub) => { setUserBingoState(ub); saveLocal("userBingo", ub); };
-  const setCompletedChallenges = (cc) => { setCompletedChallengesState(cc); saveLocal("completedChallenges", cc); };
-  const setBotm = (val) => { setBotmState(val); saveLocal("botm", val); };
-  const setMonthlyThemes = (mt) => { setMonthlyThemesState(mt); saveLocal("monthlyThemes", mt); };
+  const setMembers = setMembersState;
+  const setBooks = setBooksState;
+  const setQuotes = persisted("quotes", quotes, setQuotesState);
+  const setForums = persisted("forums", forums, setForumsState);
+  const setUserBingo = persisted("userBingo", userBingo, setUserBingoState);
+  const setCompletedChallenges = persisted("completedChallenges", completedChallenges, setCompletedChallengesState);
+  const setBotm = persisted("botm", botm, setBotmState);
+  const setMonthlyThemes = persisted("monthlyThemes", monthlyThemes, setMonthlyThemesState);
 
   useEffect(() => { saveLocal("page", page); }, [page]);
   useEffect(() => { saveLocal("screen", screen); }, [screen]);
+  useEffect(() => { saveLocal("events", events); }, [events]);
 
   /* ── FILTERED BOOK LISTS & TARGETS ── */
   const myBooks = useMemo(() => books.filter(b => getBookMemberId(b) === getMemberId(user)), [books, user]);
@@ -582,15 +753,41 @@ export default function App() {
   const goalPct = Math.min(100, Math.round((fin.length / target) * 100));
   const pagesRead = fin.reduce((a, b) => a + getBookPages(b), 0);
 
-  /* ── ASSIGNED BUDDY & ALL BUDDY PAIRS FOR THIS MONTH ── */
-  const currentBuddy = useMemo(() => {
-    if (!user || members.length <= 1) return null;
-    return getMonthlyBuddy(getMemberId(user), selMonth, members);
-  }, [user, selMonth, members]);
+  /* ── BUDDY PAIRS FOR THE SELECTED MONTH ── */
+  const monthBuddies = useMemo(
+    () => resolveBuddyPairs(selMonth, members, buddyLocks[selMonth]),
+    [selMonth, members, buddyLocks]
+  );
+  const allMonthBuddyPairs = monthBuddies.pairs;
 
-  const allMonthBuddyPairs = useMemo(() => {
-    return getMonthlyBuddyPairs(selMonth, members);
-  }, [selMonth, members]);
+  const currentBuddy = useMemo(() => {
+    if (!user) return null;
+    const uid = getMemberId(user);
+    const p = monthBuddies.pairs.find(x => getMemberId(x.m1) === uid || getMemberId(x.m2) === uid);
+    if (!p) return null;
+    return getMemberId(p.m1) === uid ? p.m2 : p.m1;
+  }, [user, monthBuddies]);
+
+  const isUnpaired = !!(user && monthBuddies.unpaired && getMemberId(monthBuddies.unpaired) === getMemberId(user));
+  const buddyPairKey = currentBuddy ? makePairKey(selMonth, getMemberId(user), getMemberId(currentBuddy)) : "";
+
+  // save the month's pairs the first time they're worked out (and whenever they change,
+  // e.g. a new wizard joins and takes the free spot)
+  useEffect(() => {
+    if (!buddyLocksReady || members.length < 2) return;
+    const sig = pairsSignature(monthBuddies);
+    const stored = buddyLocks[selMonth];
+    if (stored && stored.sig === sig) return;
+    const docData = {
+      month: selMonth,
+      year: YEAR,
+      sig,
+      pairs: monthBuddies.pairs.map(p => ({ a: getMemberId(p.m1), b: getMemberId(p.m2) })),
+      unpaired: monthBuddies.unpaired ? getMemberId(monthBuddies.unpaired) : ""
+    };
+    setBuddyLocks(l => ({ ...l, [selMonth]: docData }));
+    FirestoreService.saveDocument("buddyPairs", `${YEAR}-${selMonth}`, docData);
+  }, [buddyLocksReady, members, monthBuddies, selMonth, buddyLocks]);
 
   /* ── ROTATING AUTHOR QUOTE ON LOGIN ── */
   const [quoteIdx, setQuoteIdx] = useState(0);
@@ -617,22 +814,39 @@ export default function App() {
 
   const fmtTimer = s => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
-  /* ── INITIAL FIRESTORE SYNC ── */
+  /* ── INITIAL FIRESTORE SYNC ──
+     FIX: this used to depend on `user` and call setUser() with a brand-new object
+     each time, which re-triggered itself forever. It now runs once on startup and
+     reads the saved user from localStorage instead of from state. */
   const loadData = useCallback(async () => {
     try {
       const [msRes, bsRes] = await Promise.all([
         FirestoreService.getAll("members"), 
         FirestoreService.getAll("books")
       ]);
-      if (msRes && Array.isArray(msRes)) setMembers(msRes);
-      if (bsRes && Array.isArray(bsRes)) setBooks(bsRes);
-      
-      if (user && msRes && Array.isArray(msRes)) {
-        const freshUser = msRes.find(m => getMemberId(m) === getMemberId(user));
-        if (freshUser) setUser(freshUser);
+      if (Array.isArray(msRes)) setMembersState(msRes);
+      if (Array.isArray(bsRes)) setBooksState(bsRes);
+
+      const saved = loadLocal("user", null);
+      if (saved && Array.isArray(msRes)) {
+        const freshUser = msRes.find(m => getMemberId(m) === getMemberId(saved));
+        if (freshUser) { setUserState(freshUser); saveLocal("user", freshUser); }
       }
     } catch (e) { console.error("Firestore sync error:", e); }
-  }, [user]);
+
+    // saved buddy pairs (kept separate so a failure here never blocks the app,
+    // and so we never overwrite saved pairs if they simply failed to load)
+    try {
+      const snap = await getDocs(collection(db, "buddyPairs"));
+      const locks = {};
+      snap.docs.forEach(d => {
+        const data = d.data();
+        if (data && data.month && data.year === YEAR) locks[data.month] = data;
+      });
+      setBuddyLocks(locks);
+      setBuddyLocksReady(true);
+    } catch (e) { console.error("Buddy pairs load error:", e); }
+  }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -760,7 +974,7 @@ export default function App() {
 
     const bookId = editBook ? editBook.id : `b${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const finalEndDate = bf.status === "Finished" ? (bf.endDate || today()) : "";
-    const finalEndMonth = finalEndDate ? MONTHS[new Date(finalEndDate).getMonth()] : MONTHS[new Date().getMonth()];
+    const finalEndMonth = finalEndDate ? MONTHS[new Date(finalEndDate).getMonth()] : "";
 
     const bk = {
       id: bookId,
@@ -779,7 +993,7 @@ export default function App() {
       rating: bf.rating,
       review: bf.review,
       customcover: bf.customCover || "",
-      enddate: finalEndDate || today(),
+      enddate: finalEndDate,
       endmonth: finalEndMonth
     };
 
@@ -940,16 +1154,19 @@ export default function App() {
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; width: 100%; overflow: hidden; background: #060402; color: #EDE8DF; font-family: 'Crimson Pro', Georgia, serif; font-size: 15px; }
-    #root { height: 100vh; width: 100vw; display: flex; overflow: hidden; position: relative; }
+    #root { height: 100vh; height: 100dvh; width: 100vw; display: flex; overflow: hidden; position: relative; }
     :root { --bg:#060402; --surf:#0D0A06; --card:#130F09; --card2:#1A140D; --bdr:rgba(201,168,76,.14); --bdr2:rgba(201,168,76,.28); --gold:#C9A84C; --text:#EDE8DF; --sub:rgba(237,232,223,.48); --mut:rgba(237,232,223,.22); }
     ::-webkit-scrollbar{width:6px;height:6px;}::-webkit-scrollbar-track{background:var(--surf);}::-webkit-scrollbar-thumb{background:rgba(201,168,76,.35);border-radius:3px;}
     button,input,select,textarea{font-family:'Crimson Pro',Georgia,serif;outline:none;}
     select option{background:#0D0A06;}
     @keyframes glw{0%,100%{text-shadow:0 0 18px rgba(201,168,76,.25)}50%{text-shadow:0 0 38px rgba(201,168,76,.7)}}
+    @keyframes fiu{0%{opacity:0;transform:translateY(12px)}100%{opacity:1;transform:translateY(0)}}
   `;
   const card = { background: "var(--card)", border: "1px solid var(--bdr)", borderRadius: 14 };
 
-  if (splash) return <div style={{ height: "100%", width: "100%", position: "relative" }}><style>{css}</style><Splash onDone={() => setSplash(false)} /></div>;
+  const handleSplashDone = useCallback(() => setSplash(false), []);
+
+  if (splash) return <div style={{ height: "100%", width: "100%", position: "relative" }}><style>{css}</style><Splash onDone={handleSplashDone} /></div>;
 
   if (welcomeMsg) return (
     <div style={{ position: "fixed", inset: 0, background: "#060402", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
@@ -1133,6 +1350,12 @@ export default function App() {
               </div>
             )}
 
+            {isUnpaired && (
+              <div style={{ background: "var(--card2)", border: "1px dashed rgba(201,168,76,.4)", borderRadius: 14, padding: 14, marginBottom: 18, fontSize: 13, color: "var(--sub)", lineHeight: 1.6 }}>
+                🌙 <span style={{ color: "#C9A84C", fontFamily: "'Cinzel',serif" }}>No {selMonth} buddy yet.</span> Buddies are paired two by two, so one wizard sits out when the club has an odd number of members. You'll be paired as soon as another wizard joins.
+              </div>
+            )}
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 18 }}>
               {[{ n: fin.length, l: "Books Finished", c: "#C9A84C" }, { n: rdg.length, l: "Reading Now", c: "#6B9FD4" }, { n: `${user.streak_count || 0} 🔥`, l: "Daily Streak", c: "#E07070" }, { n: `${goalPct}%`, l: "2026 Goal Progress", c: "#6FAF7B" }].map((s, i) => (
                 <div key={i} style={{ ...card, padding: "15px 17px" }}><div style={{ fontFamily: "'Cinzel',serif", fontSize: 24, color: s.c }}>{s.n}</div><div style={{ fontSize: 12, color: "var(--sub)", marginTop: 4 }}>{s.l}</div></div>
@@ -1221,7 +1444,7 @@ export default function App() {
                     
                     <div style={{ fontSize: 10, color: "var(--sub)", margin: "4px 0", lineHeight: 1.4, textAlign: "left", background: "rgba(255,255,255,.03)", padding: "4px 6px", borderRadius: 4 }}>
                       {getStartDate(b) && <div>🏁 Start: {fmtDate(getStartDate(b))}</div>}
-                      {getEndDate(b) && <div>✨ Finished: {fmtDate(getEndDate(b))}</div>}
+                      {isStatus(b, "Finished") && getEndDate(b) && <div>✨ Finished: {fmtDate(getEndDate(b))}</div>}
                       {getBookPages(b) > 0 && <div style={{ color: "#6B9FD4" }}>📖 Pages: {getFinishedPages(b)} / {getBookPages(b)}</div>}
                     </div>
 
@@ -1305,25 +1528,14 @@ export default function App() {
                     </div>
                   ))}
                   {books.filter(b => getBookMemberId(b) === getMemberId(currentBuddy) && isStatus(b, "Reading")).length === 0 && (
-                    <div style={{ fontSize: 12, color: "var(--mut)" }}>No book logged yet for this month. Send an owl to pick a book together!</div>
+                    <div style={{ fontSize: 12, color: "var(--mut)" }}>No book logged yet for this month. Send them a message to pick a book together!</div>
                   )}
                 </div>
 
-                <div style={{ background: "rgba(201,168,76,.05)", border: "1px dashed rgba(201,168,76,.3)", borderRadius: 12, padding: 14, textAlign: "left", marginBottom: 18 }}>
-                  <div style={{ fontSize: 11, fontWeight: "bold", color: "#C9A84C", marginBottom: 6 }}>💡 BUDDY DISCUSSION STARTERS:</div>
-                  <ul style={{ paddingLeft: 18, fontSize: 12, color: "var(--sub)", lineHeight: 1.6 }}>
-                    <li>"What were your first impressions of chapter 1?"</li>
-                    <li>"Which character do you relate to the most so far?"</li>
-                    <li>"Did that plot twist surprise you, or did you see it coming?"</li>
-                    <li>"What potion/mood tag would you give this book?"</li>
-                  </ul>
-                </div>
-
-                <GB ch={`💬 Start Discussion with ${getMemberName(currentBuddy).split(" ")[0]}`} full onClick={() => {
-                  setNewPost({ title: `🤝 ${selMonth} Buddy Read: [Our Book Title]`, body: `Hey @${getMemberName(currentBuddy)}! Which book should we pick together for this month?`, bookTitle: "" });
-                  setShowNewPost(true); setPage("forum");
-                }} />
+                <BuddyChat key={buddyPairKey} pairKey={buddyPairKey} me={user} buddy={currentBuddy} monthName={selMonth} />
               </div>
+            ) : isUnpaired ? (
+              <Nil icon="🌙" msg={`No buddy for ${selMonth} yet. The club has an odd number of wizards, so one sits out. You'll be paired as soon as someone new joins.`} />
             ) : <Nil icon="🤝" msg="Add more wizards to the club to enable monthly buddy pairing!" />}
           </div>
         )}
@@ -1458,7 +1670,16 @@ export default function App() {
                   </div>
                 </div>
               ))}
-              {allMonthBuddyPairs.length === 0 && <Nil icon="🤝" msg="No club buddy pairings available yet." />}
+              {monthBuddies.unpaired && (
+                <div style={{ ...card, padding: 18, display: "flex", alignItems: "center", gap: 12, border: "1px dashed rgba(201,168,76,.35)" }}>
+                  <Av m={monthBuddies.unpaired} size={36} />
+                  <div>
+                    <div style={{ fontSize: 14, fontFamily: "'Cinzel',serif", fontWeight: "bold" }}>{getMemberName(monthBuddies.unpaired).split(" ")[0]}</div>
+                    <div style={{ fontSize: 11, color: "var(--sub)" }}>🌙 Waiting for a buddy — the club has an odd number of wizards</div>
+                  </div>
+                </div>
+              )}
+              {allMonthBuddyPairs.length === 0 && !monthBuddies.unpaired && <Nil icon="🤝" msg="No club buddy pairings available yet." />}
             </div>
           </div>
         )}
@@ -1988,7 +2209,7 @@ export default function App() {
         } onClose={() => setShowGoal(false)} />
       )}
 
-      {/* ── PROFILE EDIT MODAL (RESTORED & FULLY FUNCTIONAL) ── */}
+      {/* ── PROFILE EDIT MODAL ── */}
       {showProfEdit && (
         <Modal title="✨ Edit Wizard Profile" ch={
           <div>
@@ -2033,7 +2254,7 @@ export default function App() {
                   {books.filter(b => getBookMemberId(b) === getMemberId(viewMember)).slice(0, 10).map(b => (
                     <div key={b.id} style={{ textAlign: "center", width: 56 }}>
                       <Cover title={b.title} author={b.author} customCover={b.customcover} size={46} r={5} />
-                      <div style={{ fontSize: 9, color: "var(--sub)", marginTop: 3, lineHeight: 1.2, height: 22, overflow: "hidden" }}>{b.title.slice(0, 14)}</div>
+                      <div style={{ fontSize: 9, color: "var(--sub)", marginTop: 3, lineHeight: 1.2, height: 22, overflow: "hidden" }}>{(b.title || "").slice(0, 14)}</div>
                       <div style={{ fontSize: 8, padding: "1px 4px", borderRadius: 6, background: isStatus(b, "Finished") ? "rgba(111,175,123,.15)" : isStatus(b, "Reading") ? "rgba(107,159,212,.15)" : "rgba(255,255,255,.04)", color: isStatus(b, "Finished") ? "#6FAF7B" : isStatus(b, "Reading") ? "#6B9FD4" : "var(--mut)", marginTop: 2 }}>{b.status}</div>
                     </div>
                   ))}
